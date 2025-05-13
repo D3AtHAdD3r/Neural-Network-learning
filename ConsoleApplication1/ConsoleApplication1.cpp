@@ -71,9 +71,6 @@ int main3() {
         return 0;
 }
 
-
-
-
 int main2() {
     // Create a network with architecture [784, 30, 10]
     std::vector<int> sizes = { 784, 30, 10 };
