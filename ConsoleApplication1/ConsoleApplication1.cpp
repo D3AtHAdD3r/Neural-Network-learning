@@ -1,6 +1,5 @@
 
 #include <iostream>
-//#include <Eigen/Dense>
 #include "mnistLoader.h"
 #include"Network.h"
 #include"utils.h"
