@@ -12,7 +12,7 @@
 class Network {
 public:
     Network(const std::vector<int>& sizes);
-    Eigen::VectorXd feedforward(const Eigen::VectorXd& a);
+    Eigen::VectorXd feedforward(const Eigen::VectorXd& a); //Computes the network’s output for an input vector.
     void SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         int epochs, int mini_batch_size, double eta,
         const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr);

@@ -2,6 +2,13 @@
 #include <iomanip>
 #include"utils.h"
 
+
+//Initializes the network with layers defined by sizes(e.g., {784, 30, 10}).
+//Stores the number of layers and sizes.
+//Initializes biases for hidden/output layers (e.g., 30 for hidden, 10 for output) with random Gaussian values(N(0,1)).
+//Initializes weights between layers (e.g., 30x784 matrix from input to hidden, 10x30 from hidden to output) similarly.
+//No biases for input layer, as they don’t affect computation.
+//MNIST Context : For[784, 30, 10], the network takes a 784 - pixel image, processes it through 30 hidden neurons, and outputs 10 scores(one per digit).
 Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()) {
     // Initialize biases and weights with Gaussian distribution (mean 0, std 1)
     std::normal_distribution<double> dist(0.0, 1.0);
@@ -17,6 +24,14 @@ Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes
     }
 }
 
+//Computes the network’s output for an input vector
+//Input a is a 784x1 vector (MNIST image pixels, normalized to [0,1]).
+//For each layer:
+//Compute z = W . a + b, where W is the weight matrix, b is the bias vector.
+//Apply sigmoid: a = σ(z).
+//Pass the new activation to the next layer.
+//Output is a 10x1 vector, where the highest value’s index is the predicted digit.
+//MNIST Context: An image like 5 might produce outputs like [0.1, 0.05, 0.1, 0.05, 0.05, 0.6, 0.05, 0.0, 0.0, 0.0], predicting 5.
 Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
     Eigen::VectorXd activation = a;
     for (size_t i = 0; i < biases.size(); ++i) {
@@ -25,6 +40,22 @@ Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
     return activation;
 }
 
+
+//Trains the network using mini-batch SGD.
+//Parameters:
+//training_data: Vector of (input, label) pairs (input: 784x1, label: 10x1 one-hot).
+//epochs: Number of full passes over the training data.
+//mini_batch_size: Number of examples per mini-batch (e.g., 10).
+//eta: Learning rate (e.g., 3.0).
+//test_data: Optional vector of (input, digit) pairs for evaluation.
+//Logic:
+//For each epoch:
+//Shuffle training data to ensure randomness.
+//Split into mini-batches (e.g., 60,000 images with size 10 → 6,000 mini-batches).
+//For each mini-batch, call update_mini_batch.
+//If test_data provided, evaluate accuracy (correct predictions / total).
+//SGD vs. Gradient Descent: Instead of computing the gradient over all 60,000 images (slow), it uses small mini-batches, making updates faster and approximating the true gradient.
+//MNIST Context: Each epoch trains on all 60,000 images, but in random mini-batches, adjusting weights to better classify digits.
 void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
     int epochs, int mini_batch_size, double eta,
     const std::vector<std::pair<Eigen::VectorXd, int>>* test_data) {
@@ -101,6 +132,8 @@ void Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eig
     }
 }
 
+
+//Computes gradients of the cost function for one training example.
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y) const{
 
@@ -231,6 +264,14 @@ void Network::feedforward_standalone(const Eigen::VectorXd& x)
     // Note: activations.back() is the network's output
 }
 
+//Counts correct predictions on test data.
+//Logic:
+//For each test example:
+//Run feedforward to get output.
+//Predict the digit with the highest output value(argmax).
+//Compare with true label (0–9).
+//Return number of correct predictions.
+//MNIST Context: Accuracy like 9500/10000 means 95% correct digit predictions.
 int Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data) {
     int correct = 0;
     for (const auto& [x, y] : test_data) {
@@ -241,6 +282,7 @@ int Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_d
     return correct;
 }
 
+//Computes derivative of cost with respect to output(activations) of the output layer - dc/da;
 Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const{
     return output_activations - y;
 }
@@ -358,6 +400,7 @@ Eigen::VectorXd sigmoid(const Eigen::VectorXd& z) {
     return z.unaryExpr([](double x) { return 1.0 / (1.0 + std::exp(-x)); });
 }
 
+//used in backpropagation.
 Eigen::VectorXd sigmoid_prime(const Eigen::VectorXd& z) {
     Eigen::VectorXd sz = sigmoid(z);
     return sz.cwiseProduct(Eigen::VectorXd::Ones(sz.size()) - sz);

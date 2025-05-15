@@ -5,3 +5,8 @@
 - Eigen is included in `extern/eigen/` and configured in the project settings.
 
 - Update submodules: git submodule update --init --recursive
+
+
+#Branches:
+1. Master: A feedforward neural network to classify handwritten digits (0–9) from the MNIST dataset.(Heavily commented code).
+			

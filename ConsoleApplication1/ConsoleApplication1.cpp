@@ -1,4 +1,4 @@
-
+//Code implements a feedforward neural network with backpropagation for digit recognition on MNIST, using SGD for training.
 #include <iostream>
 #include "mnistLoader.h"
 #include"Network.h"
