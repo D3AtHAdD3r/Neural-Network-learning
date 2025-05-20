@@ -4,15 +4,12 @@
 #include <iomanip>
 
 SigmoidNeuron::SigmoidNeuron(int num_inputs, unsigned int seed)
-	:weights_(num_inputs), bias_(0.0), input_(num_inputs), 
-	activation_(0.0), rng_(seed) {
-
+	: weights_(num_inputs), bias_(0.0), activation_(0.0), rng_(seed) {
 	// Initialize weights and bias with random values in [-1, 1]
 	std::uniform_real_distribution<double> dist(-1.0, 1.0);
 	for (int i = 0; i < num_inputs; ++i) {
 		weights_(i) = dist(rng_);
 	}
-
 	bias_ = dist(rng_);
 	// TODO: Consider Xavier initialization for better convergence
 }
@@ -24,9 +21,6 @@ double SigmoidNeuron::sigmoid(double x) const {
 
 
 double SigmoidNeuron::forward(const Eigen::VectorXd& input) {
-	// Cache input for gradient computation
-	input_ = input;
-
 	// Compute weighted sum: w * x + b
 	double z = weights_.dot(input) + bias_;
 
@@ -36,7 +30,7 @@ double SigmoidNeuron::forward(const Eigen::VectorXd& input) {
 }
 
 
-void SigmoidNeuron::compute_gradient(double delta, Eigen::VectorXd& weight_grad, double& bias_grad) const {
+void SigmoidNeuron::compute_gradient(double delta, const Eigen::VectorXd& input, Eigen::VectorXd& weight_grad, double& bias_grad) const {
 
 	// Gradient of sigmoid: sigmoid(x) * (1 - sigmoid(x))
 	double sigmoid_deriv = activation_ * (1.0 - activation_);
@@ -45,18 +39,17 @@ void SigmoidNeuron::compute_gradient(double delta, Eigen::VectorXd& weight_grad,
 	double adjusted_delta = delta * sigmoid_deriv;
 
 	// Gradient for weights: delta * sigmoid'(z) * input
-	weight_grad = adjusted_delta * input_;
+	weight_grad = adjusted_delta * input;
 
 	// Gradient for bias: delta * sigmoid'(z)
 	bias_grad = adjusted_delta;
 }
 
-
-void SigmoidNeuron::update_parameters(const Eigen::VectorXd& weight_grad, double bias_grad, double learning_rate) {
-
-	// Update weights and bias using gradient descent
-	weights_ -= learning_rate * weight_grad;
-	bias_ -= learning_rate * bias_grad;
+void SigmoidNeuron::update_parameters(const Eigen::VectorXd& weights, double bias)
+{
+	// Set pre-computed weights and bias
+	weights_ = weights;
+	bias_ = bias;
 }
 
 

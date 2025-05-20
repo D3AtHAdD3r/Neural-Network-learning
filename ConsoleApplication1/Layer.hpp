@@ -16,6 +16,11 @@ private:
 	Eigen::MatrixXd weights_;           // Weight matrix (num_neurons x num_inputs)
 	Eigen::VectorXd biases_;            // Bias vector (num_neurons)
 	Eigen::VectorXd activations_;       // Cached activations (num_neurons)
+	Eigen::VectorXd input_;             // Cached input for the layer
+
+private:
+	// Sigmoid activation function
+	static double sigmoid(double x);
 
 public:
 	// Constructor: num_inputs is input size, num_neurons is number of neurons
