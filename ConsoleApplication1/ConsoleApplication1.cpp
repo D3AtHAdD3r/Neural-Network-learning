@@ -3,9 +3,7 @@
 #include"utils.h"
 #include <iostream>
 
-//Changes: 
-//1- Implementd Xavier initialization in SigmoidNeuron
-//2- fixes in other classes-network,layer
+
 
 int main() {
     try {
