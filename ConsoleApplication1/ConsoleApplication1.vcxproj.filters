@@ -35,7 +35,7 @@
     <ClInclude Include="mnistLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Network.h">
+    <ClInclude Include="Network.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="utils.h">

@@ -16,6 +16,7 @@ private:
 	Eigen::MatrixXd weights_;           // Weight matrix (num_neurons x num_inputs)
 	Eigen::VectorXd biases_;            // Bias vector (num_neurons)
 	Eigen::VectorXd activations_;       // Cached activations (num_neurons)
+	Eigen::VectorXd pre_activations_;   // Cached pre-activations (z = W * a + b)
 	Eigen::VectorXd input_;             // Cached input for the layer
 
 private:
@@ -36,14 +37,18 @@ public:
 
 	// Update parameters for all neurons
 	void update_parameters(const Eigen::MatrixXd& weight_grads,
-		const Eigen::VectorXd& bias_grads,
-		double learning_rate);
+		const Eigen::VectorXd& bias_grads);
 
 	// Print parameters for all neurons in text or JSON format
 	std::string print_parameters(bool json_format = false) const;
 
 	// Get activations (for next layer)
 	const Eigen::VectorXd& get_activations() const { return activations_; }
+	const Eigen::VectorXd& get_pre_activations() const { return pre_activations_; } // New getter
+	const Eigen::MatrixXd& get_weights() const { return weights_; }
+	const Eigen::VectorXd& get_biases() const { return biases_; };
+	const int get_num_neurons() const { return num_neurons_; };
+	const int get_num_inputs() const { return num_inputs_; };
 };
 
 #endif // LAYER_HPP

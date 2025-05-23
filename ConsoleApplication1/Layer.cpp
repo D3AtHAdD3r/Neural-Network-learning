@@ -9,7 +9,7 @@ double Layer::sigmoid(double x) {
 Layer::Layer(int num_inputs, int num_neurons, unsigned int seed)
 	: num_inputs_(num_inputs), num_neurons_(num_neurons),
 	weights_(num_neurons, num_inputs), biases_(num_neurons),
-	activations_(num_neurons), input_(num_inputs) {
+	activations_(num_neurons), pre_activations_(num_neurons), input_(num_inputs) {
 
 	// Initialize neurons and populate weight/bias matrices
 	for (int i = 0; i < num_neurons; ++i) {
@@ -26,10 +26,10 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
 	input_ = input;
 
 	// Batch forward pass: z = W * x + b
-	Eigen::VectorXd z = weights_ * input + biases_;
+	pre_activations_ = weights_ * input + biases_;
 
 	// Apply sigmoid element-wise
-	activations_ = z.unaryExpr([](double x) { return sigmoid(x); });
+	activations_ = pre_activations_.unaryExpr([](double x) { return sigmoid(x); });
 
 	// Update neuron activations for state consistency
 	for (int i = 0; i < num_neurons_; ++i) {
@@ -58,11 +58,10 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
 
 
 void Layer::update_parameters(const Eigen::MatrixXd& weight_grads,
-	const Eigen::VectorXd& bias_grads,
-	double learning_rate) {
+	const Eigen::VectorXd& bias_grads) {
 	// Update weights and biases using gradient descent
-	weights_ -= learning_rate * weight_grads;
-	biases_ -= learning_rate * bias_grads;
+	weights_ -= weight_grads;
+	biases_ -= bias_grads;
 
 	// Sync neuron parameters with pre-computed values
 	for (int i = 0; i < num_neurons_; ++i) {

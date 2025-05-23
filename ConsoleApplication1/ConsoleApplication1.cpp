@@ -1,24 +1,45 @@
-#include "Layer.hpp"
+#include "Network.hpp"
+#include "mnistLoader.h"
+#include"utils.h"
 #include <iostream>
 
+//Changes: 
+//1- Implementd Xavier initialization in SigmoidNeuron
+//2- fixes in other classes-network,layer
+
 int main() {
-    Layer layer(3, 2, 42); // 3 inputs, 2 neurons
-    std::cout << "Initial Parameters:\n" << layer.print_parameters(false) << "\n\n";
+    try {
+        // Example: [784, 30, 10] network
+        std::vector<int> sizes = { 784, 30, 10 };
+        Network net(sizes);
 
-    Eigen::VectorXd input(3);
-    input << 1.0, 0.5, -1.0;
-    Eigen::VectorXd output = layer.forward(input);
-    std::cout << "Output: " << output.transpose() << "\n\n";
+        //net.display_weights();
+        //net.display_biases();
+        //net.display_layer_weights(10);
+        //net.display_layer_biases(100);
 
-    Eigen::VectorXd deltas(2);
-    deltas << 0.1, -0.1;
-    Eigen::MatrixXd weight_grads;
-    Eigen::VectorXd bias_grads;
-    layer.compute_gradients(deltas, weight_grads, bias_grads);
-    std::cout << "Weight Gradients:\n" << weight_grads << "\nBias Gradients:\n" << bias_grads.transpose() << "\n\n";
+        // Load MNIST (pseudo-code)
+        std::string train_images = "data/train-images-idx3-ubyte";
+        std::string train_labels = "data/train-labels-idx1-ubyte";
+        std::string test_images = "data/t10k-images-idx3-ubyte";
+        std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
-    layer.update_parameters(weight_grads, bias_grads, 0.01);
-    std::cout << "Updated Parameters:\n" << layer.print_parameters(false) << "\n";
+        // Load smaller dataset for testing
+        auto training_data = load_mnist_training(train_images, train_labels, 3000);
+        auto test_data = load_mnist_test(test_images, test_labels, 1000);
 
-    return 0;
+        // Train
+        net.SGD(training_data, 30, 32, 3.0, &test_data);
+        return 0;
+    }
+    catch (const std::bad_alloc& e) {
+        std::cerr << "Memory allocation error: " << e.what() << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    
 }
+
+
+

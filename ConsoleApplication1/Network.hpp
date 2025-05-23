@@ -2,6 +2,7 @@
 #ifndef NETWORK_H
 #define NETWORK_H
 
+#include "Layer.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <random>
@@ -20,26 +21,22 @@ public:
     //Debug functions
     void display_biases() const;  // New function to display biases
     void display_weights() const;  // New function to display weights
-    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y) const; // New function
+    void display_layer_biases(int max_elements = 10) const;  // Display biases layer-wise
+    void display_layer_weights(int max_elements = 10) const;  // Display weights layer-wise
+    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y); // New function
 public:
     //Temporarily made public
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
-        const Eigen::VectorXd& x, const Eigen::VectorXd& y) const;
-public:
-    //For clarity, functions
-    void feedforward_standalone(const Eigen::VectorXd& x);
+        const Eigen::VectorXd& x, const Eigen::VectorXd& y) ;
 
 private:
     void update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta);
-    /*std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
-        const Eigen::VectorXd& x, const Eigen::VectorXd& y) const;*/
     int evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 
     int num_layers;
     std::vector<int> sizes;
-    std::vector<Eigen::VectorXd> biases;
-    std::vector<Eigen::MatrixXd> weights;
+    std::vector<Layer> layers; // Replace biases and weights with layers
     std::mt19937 rng; // Random number generator
 };
 

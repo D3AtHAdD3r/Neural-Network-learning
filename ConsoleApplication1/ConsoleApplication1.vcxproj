@@ -148,7 +148,7 @@
   <ItemGroup>
     <ClInclude Include="Layer.hpp" />
     <ClInclude Include="mnistLoader.h" />
-    <ClInclude Include="Network.h" />
+    <ClInclude Include="Network.hpp" />
     <ClInclude Include="SigmoidNeuron.hpp" />
     <ClInclude Include="utils.h" />
   </ItemGroup>

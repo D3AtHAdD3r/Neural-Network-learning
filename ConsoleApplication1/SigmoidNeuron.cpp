@@ -5,13 +5,13 @@
 
 SigmoidNeuron::SigmoidNeuron(int num_inputs, unsigned int seed)
 	: weights_(num_inputs), bias_(0.0), activation_(0.0), rng_(seed) {
-	// Initialize weights and bias with random values in [-1, 1]
-	std::uniform_real_distribution<double> dist(-1.0, 1.0);
+	// Xavier initialization (Gaussian)
+	double stddev = std::sqrt(2.0 / (num_inputs + 1)); // n_in = num_inputs, n_out = 1 (single neuron)
+	std::normal_distribution<double> dist(0.0, stddev);
 	for (int i = 0; i < num_inputs; ++i) {
 		weights_(i) = dist(rng_);
 	}
 	bias_ = dist(rng_);
-	// TODO: Consider Xavier initialization for better convergence
 }
 
 

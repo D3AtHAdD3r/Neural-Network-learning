@@ -1,41 +1,31 @@
-﻿#include "network.h"
+﻿#include "network.hpp"
 #include <iomanip>
 #include"utils.h"
 
 
 //Initializes the network with layers defined by sizes(e.g., {784, 30, 10}).
 //Stores the number of layers and sizes.
-//Initializes biases for hidden/output layers (e.g., 30 for hidden, 10 for output) with random Gaussian values(N(0,1)).
-//Initializes weights between layers (e.g., 30x784 matrix from input to hidden, 10x30 from hidden to output) similarly.
-//No biases for input layer, as they don’t affect computation.
 //MNIST Context : For[784, 30, 10], the network takes a 784 - pixel image, processes it through 30 hidden neurons, and outputs 10 scores(one per digit).
 Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()) {
-    // Initialize biases and weights with Gaussian distribution (mean 0, std 1)
-    std::normal_distribution<double> dist(0.0, 1.0);
+    
+    // Initialize layers: each layer connects sizes[i] to sizes[i+1]
     for (size_t i = 1; i < sizes.size(); ++i) {
-        biases.emplace_back(sizes[i]);
-        weights.emplace_back(sizes[i], sizes[i - 1]);
-        for (int j = 0; j < sizes[i]; ++j) {
-            biases.back()(j) = dist(rng);
-            for (int k = 0; k < sizes[i - 1]; ++k) {
-                weights.back()(j, k) = dist(rng);
-            }
-        }
+        layers.emplace_back(sizes[i - 1], sizes[i], static_cast<unsigned int>(rng()));
     }
 }
 
 //Computes the network’s output for an input vector
 //Input a is a 784x1 vector (MNIST image pixels, normalized to [0,1]).
 //For each layer:
-//Compute z = W . a + b, where W is the weight matrix, b is the bias vector.
-//Apply sigmoid: a = σ(z).
+//Compute Activation
 //Pass the new activation to the next layer.
-//Output is a 10x1 vector, where the highest value’s index is the predicted digit.
+//MNIST Context: Output is a 10x1 vector, where the highest value’s index is the predicted digit.
 //MNIST Context: An image like 5 might produce outputs like [0.1, 0.05, 0.1, 0.05, 0.05, 0.6, 0.05, 0.0, 0.0, 0.0], predicting 5.
 Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
+   
     Eigen::VectorXd activation = a;
-    for (size_t i = 0; i < biases.size(); ++i) {
-        activation = sigmoid(weights[i] * activation + biases[i]);
+    for (auto& layer : layers) {
+        activation = layer.forward(activation);
     }
     return activation;
 }
@@ -82,187 +72,75 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
 // mini_batch: A vector of (input, label) pairs, e.g., 10 MNIST images (784x1) and their one-hot labels (10x1).
 // eta: Learning rate, controls the step size of updates (e.g., 3.0).
 void Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta) {
-    // Initialize gradient accumulators for biases and weights, starting at zero.
-    // nabla_b matches biases (e.g., 30x1 for hidden, 10x1 for output).
-    // nabla_w matches weights (e.g., 30x784 for input to hidden, 10x30 for hidden to output).
-    std::vector<Eigen::VectorXd> nabla_b(biases.size());
-    std::vector<Eigen::MatrixXd> nabla_w(weights.size());
-    for (size_t i = 0; i < biases.size(); ++i) {
-        // Set each bias gradient to a zero vector of the same size as the corresponding bias.
-        nabla_b[i] = Eigen::VectorXd::Zero(biases[i].size());
-        // Set each weight gradient to a zero matrix of the same size as the corresponding weight matrix.
-        nabla_w[i] = Eigen::MatrixXd::Zero(weights[i].rows(), weights[i].cols());
+
+    if (mini_batch.empty()) return;
+    
+    //Initializes gradient accumulators(weight_grads, bias_grads) with sizes matching each layer’s weight matrix and bias vector.
+    std::vector<Eigen::MatrixXd> weight_grads;
+    std::vector<Eigen::VectorXd> bias_grads;
+
+    for (size_t i = 0; i < layers.size(); ++i) {
+        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i].get_num_neurons(), layers[i].get_num_inputs()));
+        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i].get_num_neurons()));
     }
 
-    // Process each training example in the mini-batch.
-    // For MNIST, each pair (x, y) is an image (784x1) and its one-hot label (10x1, e.g., [0,0,0,0,0,1,0,0,0,0] for digit 5).
-    int idx = 0;
+    // Accumulate gradients over the mini-batch
     for (const auto& [x, y] : mini_batch) {
-        // Compute gradients for this example using backpropagation.
-        // backprop returns (delta_nabla_b, delta_nabla_w), the gradients of the cost function
-        // with respect to biases and weights for this single example.
         auto [delta_nabla_b, delta_nabla_w] = backprop(x, y);
-       /* std::cout << "Example " << idx << " input norm: " << x.norm() << std::endl;
-        idx++;
-        ShowGrads(delta_nabla_b, delta_nabla_w, 10, 30, 40);*/
-       
-
-        // Accumulate gradients by adding this example's gradients to the running sum.
-        // This sums the contribution of each example to the total gradient for the mini-batch.
-        for (size_t i = 0; i < biases.size(); ++i) {
-            nabla_b[i] += delta_nabla_b[i]; // Add bias gradients.
-            nabla_w[i] += delta_nabla_w[i]; // Add weight gradients.
+        for (size_t i = 0; i < layers.size(); ++i) {
+            bias_grads[i] += delta_nabla_b[i];
+            weight_grads[i] += delta_nabla_w[i];
         }
-
-        //ShowGrads(nabla_b, nabla_w);
     }
 
-   
-    // Update weights and biases using the average gradient over the mini-batch.
-    // Scale by eta / mini_batch.size() to compute the step size for gradient descent.
-    // For a mini-batch of 10, this averages the gradients and applies the learning rate.
+    // Update each layer's parameters
     double scale = eta / mini_batch.size();
-    for (size_t i = 0; i < biases.size(); ++i) {
-        // Update weights: w = w - (eta/m) * gradient.
-        // This moves weights in the direction that reduces the cost function.
-        weights[i] -= scale * nabla_w[i];
-        // Update biases: b = b - (eta/m) * gradient.
-        // This adjusts biases to improve predictions for the mini-batch's digits.
-        biases[i] -= scale * nabla_b[i];
+    for (size_t i = 0; i < layers.size(); ++i) {
+        layers[i].update_parameters(weight_grads[i] * scale, bias_grads[i] * scale);
     }
 }
 
 
 //Computes gradients of the cost function for one training example.
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
-    const Eigen::VectorXd& x, const Eigen::VectorXd& y) const{
-
-    //Gradient Initialization
-    std::vector<Eigen::VectorXd> nabla_b(biases.size());
-    std::vector<Eigen::MatrixXd> nabla_w(weights.size());
-    //All gradients are initialized to zero.
-    for (size_t i = 0; i < biases.size(); ++i) {
-        nabla_b[i] = Eigen::VectorXd::Zero(biases[i].size());
-        nabla_w[i] = Eigen::MatrixXd::Zero(weights[i].rows(), weights[i].cols());
-    }
-
-    // Feedforward pass: Computes activations and pre-activations for all layers
-    // Input: x (input vector)
-    // Stores: activations (output of each layer, including input) and zs (pre-activation values)
-
-    // Start with the input vector as the first activation
-    Eigen::VectorXd activation = x;
-    std::vector<Eigen::VectorXd> activations = { x }; // Store the input as the first activation(first layer is input layer, so input = activatin)
-    std::vector<Eigen::VectorXd> zs;    // Store pre-activation values (z = W*a + b) for each layer
-
-    // Iterate through each layer (excluding input layer)
-    for (size_t i = 0; i < biases.size(); ++i) {
-        // Compute pre-activation: z = W * a + b
-        // weights[i]: Weight matrix connecting layer i to layer i+1
-        // activation: Output (activations) of the previous layer
-        // biases[i]: Bias vector for layer i+1
-        Eigen::VectorXd z = weights[i] * activation + biases[i];
-        zs.push_back(z); // Store z for use in backpropagation
-        activation = sigmoid(z); // Apply sigmoid activation function to get new activations
-        activations.push_back(activation); // Store the new activations for the current layer
-    }
-
-    //debug
-    /*std::cout << "----->Activations[0]:  \n";
-    displayVectorXd(activations[0], 500);
-    std::cout << "\n";
-    std::cout << "----->Activations[1]:  \n";
-    displayVectorXd(activations[1], 500);
-    std::cout << "\n";*/
-
-    // Backward pass: Compute gradients for biases and weights
-
-    // Step 1:Compute error (delta) for the output layer.
-    // ***In Notes(BackPropogation simplified): delta = ((a-y).σ'(z)). 
-    // cost_derivative(activations.back(), y) = (a-y) = derivative of cost function, with respect to networks's output.
-    // activations.back(): The output layer's activations, computed in the feedforward pass. y: The target output.
-    // sigmoid_prime(zs.back()) = σ'(z) = the derivative of the sigmoid function at z.
-    // zs.back() = The pre-activation values for the output layer.
-    // cwiseProduct: Element-wise multiplication of the cost derivative and sigmoid derivative.
-    Eigen::VectorXd delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
-
-    //debug
-    /*std::cout << "----->delta for output layer:  \n";
-    displayVectorXd(delta);
-    std::cout << "\n";*/
+    const Eigen::VectorXd& x, const Eigen::VectorXd& y) {
     
-    //Store the gradients relative to biases of last or output layer.
-    //or The gradient of the cost with respect to the output layer biases.
-    // ***In Notes (BackPropogation simplified): dc/db = ((a-y).σ'(z)) . 1 = delta
-    nabla_b.back() = delta;
+    // Initialize gradients
+    std::vector<Eigen::VectorXd> nabla_b(layers.size());
+    std::vector<Eigen::MatrixXd> nabla_w(layers.size());
 
-    //Computes and Stores the gradient of the cost with respect to the output layer weights
-    // ***In Notes (BackPropogation simplified): dc/dw = ((a-y).σ'(z)) . x, where x=inputs(output from hidden layer in this case)
-    //activations[activations.size() - 2]: The activations of the second-to-last layer.
+    for (size_t i = 0; i < layers.size(); ++i) {
+        nabla_b[i] = Eigen::VectorXd::Zero(layers[i].get_activations().size());
+        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i].get_activations().size(), i == 0 ? x.size() : layers[i - 1].get_activations().size());
+    }
+
+    // Feedforward pass
+    Eigen::VectorXd activation = x;
+    std::vector<Eigen::VectorXd> activations = { x };
+    std::vector<Eigen::VectorXd> zs;
+
+    for (size_t i = 0; i < layers.size(); ++i) {
+        activation = layers[i].forward(activation); // Compute forward pass
+        zs.push_back(layers[i].get_pre_activations()); // Store pre-activation (z)
+        activations.push_back(layers[i].get_activations()); // Store activation
+    }
+
+    // Backward pass
+    Eigen::VectorXd delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
+    nabla_b.back() = delta;
     nabla_w.back() = delta * activations[activations.size() - 2].transpose();
 
-    //debug
-    /*std::cout << "----->Weigth Gradients for output layer:  \n";
-    displayMatrixXd(nabla_w.back());
-    std::cout << "\n";*/
-    
-    //Hidden Layer Error Propagation
-    //Propagates the error backward through the hidden layers, computing errors and gradients for each layer from the second-to-last layer to the first hidden layer.
     for (int l = 2; l < num_layers; ++l) {
-
-        //Retrieve Pre-Activation of current layer(l)
         const Eigen::VectorXd& z = zs[zs.size() - l];
-
-        //debug
-        /*std::cout << "----->Pre-Activations for hidden layer:  \n";
-        displayVectorXd(z);
-        std::cout << "\n";*/
-
-        //Compute Sigmoid Derivative
-        Eigen::VectorXd sp = sigmoid_prime(z); //σ'(z^l)
-
-        //debug
-        /*std::cout << "----->Sigmoid Derivatives of Pre-Activations :  \n";
-        displayVectorXd(sp);
-        std::cout << "\n";*/
-
-        //Compute error (delta) for the layer(l)
-        delta = (weights[weights.size() - l + 1].transpose() * delta).cwiseProduct(sp); // delta^l = (W^(l+1))^T * delta^(l+1) ⊙ σ'(z^l)
-
-        //debug
-       /* std::cout << "----->delta for hidden layer:  \n";
-        displayVectorXd(delta);
-        std::cout << "\n";*/
-
-        nabla_b[nabla_b.size() - l] = delta; // Gradient for biases: ∂C/∂b^l = delta^l
-        nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose(); // Gradient for weights: ∂C/∂W^l = delta^l * (a^(l-1))^T
-
-        //debug
-       /* std::cout << "----->Weigth Gradients for hidden layer:  \n";
-        displayMatrixXd(nabla_w[nabla_w.size() - l], 1500);
-        std::cout << "\n";*/
+        Eigen::VectorXd sp = sigmoid_prime(z);
+        delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
+        nabla_b[nabla_b.size() - l] = delta;
+        nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose();
     }
+
     return { nabla_b, nabla_w };
 }
 
-// Perform the feedforward pass for a neural network
-// Input: x (input vector)
-// Output: None (stores activations and zs for later use)
-void Network::feedforward_standalone(const Eigen::VectorXd& x)
-{
-    Eigen::VectorXd activation = x;  // Initialize with input as the first activation
-    std::vector<Eigen::VectorXd> activations = { x };  // Store input activation
-    std::vector<Eigen::VectorXd> zs;  // Store pre-activation values
-
-    for (size_t i = 0; i < biases.size(); ++i) {  // Loop over layers (hidden + output)
-        // Compute pre-activation: z = W * a + b
-        Eigen::VectorXd z = weights[i] * activation + biases[i];
-        zs.push_back(z);  // Save z for backpropagation
-        activation = sigmoid(z);  // Apply sigmoid to get new activations
-        activations.push_back(activation);  // Save activations for next layer or backprop
-    }
-    // Note: activations.back() is the network's output
-}
 
 //Counts correct predictions on test data.
 //Logic:
@@ -290,43 +168,66 @@ Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activatio
 void Network::display_biases() const {
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "=== Biases ===" << std::endl;
-    for (size_t i = 0; i < biases.size(); ++i) {
-        std::string layer_name = (i == biases.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << layer_name << " (" << biases[i].size() << " biases):" << std::endl;
-        for (int j = 0; j < biases[i].size(); ++j) {
-            std::cout << "  b[" << j << "] = " << biases[i](j);
-            if (j < biases[i].size() - 1) std::cout << ",";
-            if (j == 9 && biases[i].size() > 10) {
-                std::cout << " ... (truncated, total " << biases[i].size() << " biases)";
-                break;
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        std::string layer_name = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
+        std::cout << layer_name << ":\n" << layers[i].print_parameters(false);
     }
 }
 
 void Network::display_weights() const {
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "=== Weights ===" << std::endl;
-    for (size_t i = 0; i < weights.size(); ++i) {
+    for (size_t i = 0; i < layers.size(); ++i) {
         std::string from_layer = (i == 0) ? "Input Layer" : "Hidden Layer " + std::to_string(i);
-        std::string to_layer = (i == weights.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
+        std::string to_layer = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
+        std::cout << "From " << from_layer << " to " << to_layer << ":\n" << layers[i].print_parameters(false);
+    }
+}
+
+void Network::display_layer_biases(int max_elements) const {
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "=== Layer Biases ===" << std::endl;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        std::string layer_name = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
+        std::cout << layer_name << " (" << layers[i].get_num_neurons() << " biases):" << std::endl;
+        const Eigen::VectorXd& biases = layers[i].get_biases();
+        int display_count = std::min(static_cast<int>(biases.size()), max_elements);
+        std::cout << "  [";
+        for (int j = 0; j < display_count; ++j) {
+            std::cout << biases(j);
+            if (j < display_count - 1) std::cout << ", ";
+        }
+        if (display_count < biases.size()) std::cout << ", ...";
+        std::cout << "]" << std::endl;
+        if (display_count < biases.size()) {
+            std::cout << "  (Truncated, total " << biases.size() << " biases)" << std::endl;
+        }
+        std::cout << std::endl;
+    }
+}
+
+void Network::display_layer_weights(int max_elements) const {
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "=== Layer Weights ===" << std::endl;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        std::string from_layer = (i == 0) ? "Input Layer" : "Hidden Layer " + std::to_string(i);
+        std::string to_layer = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
         std::cout << "From " << from_layer << " to " << to_layer
-            << " (" << weights[i].rows() << "x" << weights[i].cols() << " matrix):" << std::endl;
-        int max_rows = std::min(static_cast<int>(weights[i].rows()), 5);
-        int max_cols = std::min(static_cast<int>(weights[i].cols()), 5);
+            << " (" << layers[i].get_num_neurons() << "x" << layers[i].get_num_inputs() << " matrix):" << std::endl;
+        const Eigen::MatrixXd& weights = layers[i].get_weights();
+        int max_rows = std::min(static_cast<int>(weights.rows()), max_elements);
+        int max_cols = std::min(static_cast<int>(weights.cols()), max_elements);
         for (int r = 0; r < max_rows; ++r) {
             std::cout << "  [";
             for (int c = 0; c < max_cols; ++c) {
-                std::cout << weights[i](r, c);
+                std::cout << weights(r, c);
                 if (c < max_cols - 1) std::cout << ", ";
             }
-            if (max_cols < weights[i].cols()) std::cout << ", ...";
+            if (max_cols < weights.cols()) std::cout << ", ...";
             std::cout << "]" << std::endl;
         }
-        if (max_rows < weights[i].rows() || max_cols < weights[i].cols()) {
-            std::cout << "  (Truncated, full size: " << weights[i].rows() << "x" << weights[i].cols() << ")" << std::endl;
+        if (max_rows < weights.rows() || max_cols < weights.cols()) {
+            std::cout << "  (Truncated, full size: " << weights.rows() << "x" << weights.cols() << ")" << std::endl;
         }
         std::cout << std::endl;
     }
@@ -337,7 +238,7 @@ void Network::display_weights() const {
 // y: Desired output (e.g., 10x1 one-hot label for a digit).
 // Prints bias gradients (e.g., 30x1 for hidden, 10x1 for output) and weight gradients
 // (e.g., 30x784 for input to hidden, 10x30 for hidden to output), with truncation for readability.
-void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y) const {
+void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y) {
     // Compute gradients using backprop for the given example.
     auto [nabla_b, nabla_w] = backprop(x, y);
 
