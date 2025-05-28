@@ -142,14 +142,13 @@
     <ClCompile Include="ConsoleApplication1.cpp" />
     <ClCompile Include="Layer.cpp" />
     <ClCompile Include="Network.cpp" />
-    <ClCompile Include="SigmoidNeuron.cpp" />
+    <ClCompile Include="test.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Layer.hpp" />
     <ClInclude Include="mnistLoader.h" />
     <ClInclude Include="Network.hpp" />
-    <ClInclude Include="SigmoidNeuron.hpp" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

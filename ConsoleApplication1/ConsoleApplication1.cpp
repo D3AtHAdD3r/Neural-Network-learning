@@ -3,16 +3,19 @@
 #include"utils.h"
 #include <iostream>
 
-
-
-int main() {
+/*Changes made :
+1- Removed neuron class(sigmoid) for efficiecy and performance. 
+2- Added unit tests
+3- Added Doxygen comments in layer and network classes
+*/
+int main_1() {
     try {
         // Example: [784, 30, 10] network
         std::vector<int> sizes = { 784, 30, 10 };
         Network net(sizes);
 
-        //net.display_weights();
-        //net.display_biases();
+        net.display_weights();
+        net.display_biases();
         //net.display_layer_weights(10);
         //net.display_layer_biases(100);
 
@@ -36,7 +39,20 @@ int main() {
     catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
-    
+}
+
+int main_2() {
+    std::vector<int> sizes = { 2, 3, 1 };
+    Network net(sizes);
+    net.display_weights();
+    net.display_biases();
+    Eigen::VectorXd input(2);
+    input << 0.5, 0.3;
+    Eigen::VectorXd output = net.feedforward(input);
+    std::cout << "Output: " << output.transpose() << std::endl;
+    //net.display_weights();
+    //net.display_biases();
+    return 0;
 }
 
 

@@ -9,38 +9,120 @@
 #include <algorithm>
 #include <iostream>
 
-
+/**
+ * @brief A feedforward neural network with sigmoid activation.
+ *
+ * Implements a multi-layer neural network for tasks like MNIST classification,
+ * supporting feedforward, backpropagation, and stochastic gradient descent (SGD).
+ */
 class Network {
 public:
+    /**
+     * @brief Constructs a network with specified layer sizes.
+     * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
+     */
     Network(const std::vector<int>& sizes);
-    Eigen::VectorXd feedforward(const Eigen::VectorXd& a); //Computes the network’s output for an input vector.
+
+    /**
+     * @brief Computes the network output for a given input.
+     * @param a Input vector
+     * @return Output activations of the final layer
+     */
+    Eigen::VectorXd feedforward(const Eigen::VectorXd& a);
+
+    /**
+     * @brief Trains the network using stochastic gradient descent.
+     * @param training_data Vector of (input, target) pairs
+     * @param epochs Number of training epochs
+     * @param mini_batch_size Size of each mini-batch
+     * @param eta Learning rate
+     * @param test_data Optional test data for evaluation
+     */
     void SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         int epochs, int mini_batch_size, double eta,
         const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr);
+
+    /**
+     * @brief Displays biases for all layers.
+     */
+    void display_biases() const;
+
+    /**
+     * @brief Displays weights for all layers.
+     */
+    void display_weights() const;
+
+    /**
+     * @brief Displays biases layer-wise with truncation.
+     * @param max_elements Maximum elements to display per layer
+     */
+    void display_layer_biases(int max_elements = 10) const;
+
+    /**
+     * @brief Displays weights layer-wise with truncation.
+     * @param max_elements Maximum elements to display per layer
+     */
+    void display_layer_weights(int max_elements = 10) const;
+
+    /**
+     * @brief Displays gradients computed by backpropagation for a single example.
+     * @param x Input vector
+     * @param y Target vector
+     */
+    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y);
+
 public:
-    //Debug functions
-    void display_biases() const;  // New function to display biases
-    void display_weights() const;  // New function to display weights
-    void display_layer_biases(int max_elements = 10) const;  // Display biases layer-wise
-    void display_layer_weights(int max_elements = 10) const;  // Display weights layer-wise
-    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y); // New function
-public:
-    //Temporarily made public
+    //Temporarily public
+    /**
+     * @brief Computes gradients for a single training example using backpropagation.
+     * @param x Input vector
+     * @param y Target vector
+     * @return Pair of bias gradients and weight gradients for each layer
+     */
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
-        const Eigen::VectorXd& x, const Eigen::VectorXd& y) ;
+        const Eigen::VectorXd& x, const Eigen::VectorXd& y);
+
+    /**
+     * @brief Evaluates the network on test data.
+     * @param test_data Vector of (input, label) pairs
+     * @return Number of correct predictions
+     */
+    int evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 
 private:
+    /**
+     * @brief Updates weights and biases for a mini-batch using gradient descent.
+     * @param mini_batch Vector of (input, target) pairs
+     * @param eta Learning rate
+     */
     void update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta);
-    int evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+
+    /**
+     * @brief Computes the derivative of the cost function w.r.t. output activations.
+     * @param output_activations Output activations of the final layer
+     * @param y Target vector
+     * @return Cost derivative
+     */
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 
-    int num_layers;
-    std::vector<int> sizes;
-    std::vector<Layer> layers; // Replace biases and weights with layers
-    std::mt19937 rng; // Random number generator
+    int num_layers;                     ///< Number of layers
+    std::vector<int> sizes;             ///< Sizes of each layer
+    std::vector<Layer> layers;          ///< Layers of the network
+    std::mt19937 rng;                   ///< Random number generator
 };
 
+/**
+ * @brief Applies sigmoid activation element-wise to a vector.
+ * @param z Input vector
+ * @return Sigmoid of each element
+ */
 Eigen::VectorXd sigmoid(const Eigen::VectorXd& z);
+
+/**
+ * @brief Computes the derivative of the sigmoid function element-wise.
+ * @param z Input vector
+ * @return Sigmoid derivative for each element
+ */
 Eigen::VectorXd sigmoid_prime(const Eigen::VectorXd& z);
 
 #endif
