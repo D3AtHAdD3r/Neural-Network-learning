@@ -142,6 +142,7 @@
     <ClCompile Include="ConsoleApplication1.cpp" />
     <ClCompile Include="Layer.cpp" />
     <ClCompile Include="Network.cpp" />
+    <ClCompile Include="NeuralNetworkTest.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
@@ -149,6 +150,7 @@
     <ClInclude Include="Layer.hpp" />
     <ClInclude Include="mnistLoader.h" />
     <ClInclude Include="Network.hpp" />
+    <ClInclude Include="NeuralNetworkTest.hpp" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

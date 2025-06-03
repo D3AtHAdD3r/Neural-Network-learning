@@ -180,7 +180,7 @@ TEST(test_network_sgd) {
 	ASSERT_TRUE(final_correct >= initial_correct); // Expect improvement
 }
 
-int main() {
+int main_bb() {
 	RUN_TEST(test_layer_constructor);
 	RUN_TEST(test_layer_forward);
 	RUN_TEST(test_layer_gradients);

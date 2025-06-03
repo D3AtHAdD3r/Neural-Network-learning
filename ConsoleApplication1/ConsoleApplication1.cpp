@@ -1,3 +1,4 @@
+#include "NeuralNetworkTest.hpp"
 #include "Network.hpp"
 #include "mnistLoader.h"
 #include"utils.h"
@@ -7,6 +8,7 @@
 1- Removed neuron class(sigmoid) for efficiecy and performance. 
 2- Added unit tests
 3- Added Doxygen comments in layer and network classes
+4- Added NeuralNetworkTest class
 */
 int main_1() {
     try {
@@ -41,19 +43,28 @@ int main_1() {
     }
 }
 
-int main_2() {
-    std::vector<int> sizes = { 2, 3, 1 };
-    Network net(sizes);
-    net.display_weights();
-    net.display_biases();
-    Eigen::VectorXd input(2);
-    input << 0.5, 0.3;
-    Eigen::VectorXd output = net.feedforward(input);
-    std::cout << "Output: " << output.transpose() << std::endl;
-    //net.display_weights();
-    //net.display_biases();
+
+
+int main() {
+
+    // Default parameters
+    //NeuralNetworkTest tester;
+    //bool all_passed = tester.runAllTests();
+
+    // Example with custom parameters
+    std::vector<int> custom_sizes = { 2, 3, 2 };
+    NeuralNetworkTest custom_tester(3, 4, 123, custom_sizes);
+
+    bool all_passed;
+    all_passed = custom_tester.runAllTests();
+
+    if (all_passed) {
+        std::cout << "All test suites passed!" << std::endl;
+    }
+    else {
+        std::cerr << "Some tests failed." << std::endl;
+        return 1;
+    }
+
     return 0;
 }
-
-
-
