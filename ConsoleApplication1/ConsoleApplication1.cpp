@@ -3,7 +3,10 @@
 #include"utils.h"
 #include <iostream>
 
-
+/*
+Changes Made:
+1. Neuron centric design, with added layer class.
+*/
 
 int main() {
     try {
