@@ -37,10 +37,12 @@ public:
      * @param mini_batch_size Size of each mini-batch
      * @param eta Learning rate
      * @param test_data Optional test data for evaluation
+     * @param verbose If true, display detailed metrics per epoch
      */
     void SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         int epochs, int mini_batch_size, double eta,
-        const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr);
+        const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr,
+        bool verbose = true);
 
     /**
      * @brief Displays biases for all layers.
@@ -105,6 +107,22 @@ private:
      */
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 
+private:
+    /**
+     * @brief Computes the mean squared error loss over test data.
+     * @param test_data Vector of (input, label) pairs
+     * @return Average MSE loss
+     */
+    double compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+
+    /**
+     * @brief Computes the L2 norm of gradients for a mini-batch.
+     * @param mini_batch Vector of (input, target) pairs
+     * @return L2 norm of gradients
+     */
+    double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch);
+
+private:
     int num_layers;                     ///< Number of layers
     std::vector<int> sizes;             ///< Sizes of each layer
     std::vector<Layer> layers;          ///< Layers of the network

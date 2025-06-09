@@ -34,22 +34,42 @@ Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
  * @param mini_batch_size Size of each mini-batch
  * @param eta Learning rate
  * @param test_data Optional test data for evaluation
+ * @param verbose If true, display detailed metrics per epoch
  */
 void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
     int epochs, int mini_batch_size, double eta,
-    const std::vector<std::pair<Eigen::VectorXd, int>>* test_data) {
+    const std::vector<std::pair<Eigen::VectorXd, int>>* test_data, 
+    bool verbose) {
     size_t n = training_data.size();
     size_t n_test = test_data ? test_data->size() : 0;
     for (int j = 0; j < epochs; ++j) {
         std::shuffle(training_data.begin(), training_data.end(), rng);
+        double batch_gradient_norm = 0.0;
         for (size_t k = 0; k < n; k += mini_batch_size) {
             std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch(
                 training_data.begin() + k,
                 training_data.begin() + std::min(k + mini_batch_size, n));
+
+            batch_gradient_norm += compute_gradient_norm(mini_batch);
             update_mini_batch(mini_batch, eta);
         }
-        if (test_data) {
-            std::cout << "Epoch " << j << ": (Correct Predictions) " << evaluate(*test_data) << " / " << n_test << std::endl;
+
+        batch_gradient_norm /= (n / mini_batch_size);
+       
+        if (verbose && test_data) {
+            int correct = evaluate(*test_data);
+            double accuracy = (n_test > 0) ? (correct * 100.0 / n_test) : 0.0;
+            double loss = compute_test_loss(*test_data);
+            std::cout << std::fixed << std::setprecision(4);
+            std::cout << "Epoch " << j
+                << ": Accuracy = " << accuracy << "%"
+                << ", Correct = " << correct << "/" << n_test
+                << ", Loss = " << loss
+                << ", Gradient Norm = " << batch_gradient_norm << std::endl;
+        }
+        else if (test_data) {
+            int correct = evaluate(*test_data);
+            std::cout << "Epoch " << j << ": Correct Predictions = " << correct << "/" << n_test << std::endl;
         }
         else {
             std::cout << "Epoch " << j << " complete" << std::endl;
@@ -150,6 +170,56 @@ int Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_d
  */
 Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const {
     return output_activations - y;
+}
+
+/**
+ * @brief Computes the mean squared error loss over test data.
+ * @param test_data Vector of (input, label) pairs
+ * @return Average MSE loss
+ */
+double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data)
+{
+    double total_loss = 0.0;
+    for (const auto& [x, y] : test_data) {
+        Eigen::VectorXd output = feedforward(x);
+        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
+        target(y) = 1.0; // One-hot encoding for target label
+        Eigen::VectorXd diff = output - target;
+        total_loss += diff.squaredNorm();
+    }
+    return total_loss / test_data.size();
+
+}
+
+
+/**
+ * @brief Computes the L2 norm of gradients for a mini-batch.
+ * @param mini_batch Vector of (input, target) pairs
+ * @return L2 norm of gradients
+ */
+double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch)
+{
+    std::vector<Eigen::MatrixXd> weight_grads;
+    std::vector<Eigen::VectorXd> bias_grads;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i].get_num_neurons(), layers[i].get_num_inputs()));
+        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i].get_num_neurons()));
+    }
+
+    for (const auto& [x, y] : mini_batch) {
+        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y);
+        for (size_t i = 0; i < layers.size(); ++i) {
+            bias_grads[i] += delta_nabla_b[i];
+            weight_grads[i] += delta_nabla_w[i];
+        }
+    }
+
+    double norm = 0.0;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        norm += bias_grads[i].squaredNorm();
+        norm += weight_grads[i].squaredNorm();
+    }
+    return std::sqrt(norm / mini_batch.size());
 }
 
 /**

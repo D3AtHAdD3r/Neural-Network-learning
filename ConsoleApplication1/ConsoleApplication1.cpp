@@ -5,19 +5,16 @@
 #include <iostream>
 
 /*Changes made :
-1- Removed neuron class(sigmoid) for efficiecy and performance. 
-2- Added unit tests
-3- Added Doxygen comments in layer and network classes
-4- Added NeuralNetworkTest class
+
 */
-int main_1() {
+int main() {
     try {
         // Example: [784, 30, 10] network
         std::vector<int> sizes = { 784, 30, 10 };
         Network net(sizes);
 
-        net.display_weights();
-        net.display_biases();
+        //net.display_weights();
+        //net.display_biases();
         //net.display_layer_weights(10);
         //net.display_layer_biases(100);
 
@@ -45,7 +42,7 @@ int main_1() {
 
 
 
-int main() {
+int main_2() {
 
     // Default parameters
     //NeuralNetworkTest tester;
