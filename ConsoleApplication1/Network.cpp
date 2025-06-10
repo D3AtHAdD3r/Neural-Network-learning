@@ -6,7 +6,7 @@
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()) {
+Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()), last_test_loss(0.0) {
     for (size_t i = 1; i < sizes.size(); ++i) {
         layers.emplace_back(sizes[i - 1], sizes[i], static_cast<unsigned int>(rng()));
     }
@@ -45,21 +45,23 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     for (int j = 0; j < epochs; ++j) {
         std::shuffle(training_data.begin(), training_data.end(), rng);
         double batch_gradient_norm = 0.0;
+
+        size_t num_batches = (n + mini_batch_size - 1) / mini_batch_size; // Ceiling division
+
         for (size_t k = 0; k < n; k += mini_batch_size) {
             std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch(
                 training_data.begin() + k,
                 training_data.begin() + std::min(k + mini_batch_size, n));
 
-            batch_gradient_norm += compute_gradient_norm(mini_batch);
-            update_mini_batch(mini_batch, eta);
+            batch_gradient_norm += update_mini_batch(mini_batch, eta);
         }
 
-        batch_gradient_norm /= (n / mini_batch_size);
+        batch_gradient_norm /= num_batches;
        
         if (verbose && test_data) {
-            int correct = evaluate(*test_data);
+            auto [correct, total_loss] = evaluate(*test_data);
             double accuracy = (n_test > 0) ? (correct * 100.0 / n_test) : 0.0;
-            double loss = compute_test_loss(*test_data);
+            double loss = (n_test > 0) ? total_loss / n_test : 0.0;
             std::cout << std::fixed << std::setprecision(4);
             std::cout << "Epoch " << j
                 << ": Accuracy = " << accuracy << "%"
@@ -68,7 +70,7 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
                 << ", Gradient Norm = " << batch_gradient_norm << std::endl;
         }
         else if (test_data) {
-            int correct = evaluate(*test_data);
+            auto [correct, total_loss] = evaluate(*test_data);
             std::cout << "Epoch " << j << ": Correct Predictions = " << correct << "/" << n_test << std::endl;
         }
         else {
@@ -78,12 +80,13 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
 }
 
 /**
- * @brief Updates weights and biases for a mini-batch using gradient descent.
+ * @brief Updates weights and biases for a mini-batch and computes gradient norm.
  * @param mini_batch Vector of (input, target) pairs
  * @param eta Learning rate
+ * @return L2 norm of gradients for the mini-batch
  */
-void Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta) {
-    if (mini_batch.empty()) return;
+double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta) {
+    if (mini_batch.empty()) return 0.0;
 
     std::vector<Eigen::MatrixXd> weight_grads;
     std::vector<Eigen::VectorXd> bias_grads;
@@ -100,10 +103,19 @@ void Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eig
         }
     }
 
+    double norm = 0.0;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        norm += bias_grads[i].squaredNorm();
+        norm += weight_grads[i].squaredNorm();
+    }
+    norm = std::sqrt(norm / mini_batch.size());
+
     double scale = eta / mini_batch.size();
     for (size_t i = 0; i < layers.size(); ++i) {
         layers[i].update_parameters(weight_grads[i] * scale, bias_grads[i] * scale);
     }
+
+    return norm;
 }
 
 /**
@@ -148,18 +160,25 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 }
 
 /**
- * @brief Evaluates the network on test data.
+ * @brief Evaluates the network on test data and computes loss.
  * @param test_data Vector of (input, label) pairs
- * @return Number of correct predictions
+ * @return Pair of (correct predictions, total MSE loss)
  */
-int Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data) {
+std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data) {
     int correct = 0;
+    double total_loss = 0.0;
     for (const auto& [x, y] : test_data) {
         Eigen::VectorXd output = feedforward(x);
         int predicted = std::distance(output.data(), std::max_element(output.data(), output.data() + output.size()));
         if (predicted == y) ++correct;
+
+        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
+        target(y) = 1.0; // One-hot encoding for target label
+        Eigen::VectorXd diff = output - target;
+        total_loss += diff.squaredNorm();
     }
-    return correct;
+    last_test_loss = total_loss; // Cache total loss
+    return { correct, total_loss };
 }
 
 /**

@@ -143,7 +143,6 @@
     <ClCompile Include="Layer.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="NeuralNetworkTest.cpp" />
-    <ClCompile Include="test.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>

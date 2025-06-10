@@ -155,7 +155,7 @@ void NeuralNetworkTest::testNetworkConstructor()
     ++total_tests_;
     Network net(network_sizes_);
 
-    assertTrue(net.evaluate({}) == 0, "Evaluate on empty data should return 0", __FILE__, __LINE__);
+    assertTrue(net.evaluate({}).first == 0, "Evaluate on empty data should return 0", __FILE__, __LINE__);
 
     auto [nabla_b, nabla_w] = net.backprop(Eigen::VectorXd(network_sizes_[0]), Eigen::VectorXd(network_sizes_.back()));
     assertTrue(nabla_b.size() == network_sizes_.size() - 1 && nabla_w.size() == network_sizes_.size() - 1,
@@ -210,36 +210,6 @@ void NeuralNetworkTest::testNetworkBackprop()
     ++passed_tests_;
     std::cout << "Passed" << std::endl;
 }
-//
-//void NeuralNetworkTest::testNetworkSGD()
-//{
-//    std::cout << "Running testNetworkSGD... ";
-//    ++total_tests_;
-//    Network net(network_sizes_);
-//    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data(4);
-//    training_data[0].first = Eigen::VectorXd(network_sizes_[0]);  training_data[0].first << 0, 0;
-//    training_data[0].second = Eigen::VectorXd(network_sizes_.back()); training_data[0].second << 1, 0;
-//    training_data[1].first = Eigen::VectorXd(network_sizes_[0]);  training_data[1].first << 0, 1;
-//    training_data[1].second = Eigen::VectorXd(network_sizes_.back()); training_data[1].second << 0, 1;
-//    training_data[2].first = Eigen::VectorXd(network_sizes_[0]);  training_data[2].first << 1, 0;
-//    training_data[2].second = Eigen::VectorXd(network_sizes_.back()); training_data[2].second << 0, 1;
-//    training_data[3].first = Eigen::VectorXd(network_sizes_[0]);  training_data[3].first << 1, 1;
-//    training_data[3].second = Eigen::VectorXd(network_sizes_.back()); training_data[3].second << 1, 0;
-//
-//    std::vector<std::pair<Eigen::VectorXd, int>> test_data(4);
-//    test_data[0].first = Eigen::VectorXd(network_sizes_[0]); test_data[0].first << 0, 0; test_data[0].second = 0;
-//    test_data[1].first = Eigen::VectorXd(network_sizes_[0]); test_data[1].first << 0, 1; test_data[1].second = 1;
-//    test_data[2].first = Eigen::VectorXd(network_sizes_[0]); test_data[2].first << 1, 0; test_data[2].second = 1;
-//    test_data[3].first = Eigen::VectorXd(network_sizes_[0]); test_data[3].first << 1, 1; test_data[3].second = 0;
-//
-//    int initial_correct = net.evaluate(test_data);
-//    net.SGD(training_data, 100, 2, 1.0, &test_data);
-//    int final_correct = net.evaluate(test_data);
-//    assertTrue(final_correct >= initial_correct, "SGD did not improve accuracy", __FILE__, __LINE__);
-//
-//    ++passed_tests_;
-//    std::cout << "Passed" << std::endl;
-//}
 
 /**
  * @brief Tests Network SGD on a generalized XOR-like dataset.
@@ -258,9 +228,9 @@ void NeuralNetworkTest::testNetworkSGD() {
     generateXORLikeDataset(training_data, test_data);
 
     // Run SGD and evaluate
-    int initial_correct = net.evaluate(test_data);
+    auto [initial_correct, loss] = net.evaluate(test_data);
     net.SGD(training_data, 400, 2, 1.0, &test_data);
-    int final_correct = net.evaluate(test_data);
+    int final_correct = net.evaluate(test_data).first;
 
     assertTrue(final_correct >= initial_correct, "SGD did not improve accuracy", __FILE__, __LINE__);
    

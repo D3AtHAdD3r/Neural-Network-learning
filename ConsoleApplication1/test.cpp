@@ -114,7 +114,7 @@ TEST(test_layer_update_parameters) {
 TEST(test_network_constructor) {
 	std::vector<int> sizes = { 2, 3, 2 };
 	Network net(sizes);
-	ASSERT_TRUE(net.evaluate({}) == 0); // Empty test data
+	ASSERT_TRUE(net.evaluate({}).first == 0); // Empty test data
 	// Verify layer sizes
 	ASSERT_TRUE(net.backprop(Eigen::VectorXd(2), Eigen::VectorXd(2)).first.size() == 2); // 2 layers
 }
@@ -174,9 +174,9 @@ TEST(test_network_sgd) {
 	test_data[2].first = Eigen::VectorXd(2); test_data[2].first << 1, 0; test_data[2].second = 1;
 	test_data[3].first = Eigen::VectorXd(2); test_data[3].first << 1, 1; test_data[3].second = 0;
 
-	int initial_correct = net.evaluate(test_data);
+	int initial_correct = net.evaluate(test_data).first;
 	net.SGD(training_data, 100, 2, 1.0, &test_data);
-	int final_correct = net.evaluate(test_data);
+	int final_correct = net.evaluate(test_data).first;
 	ASSERT_TRUE(final_correct >= initial_correct); // Expect improvement
 }
 

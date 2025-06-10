@@ -85,19 +85,20 @@ public:
         const Eigen::VectorXd& x, const Eigen::VectorXd& y);
 
     /**
-     * @brief Evaluates the network on test data.
+     * @brief Evaluates the network on test data and computes loss.
      * @param test_data Vector of (input, label) pairs
-     * @return Number of correct predictions
+     * @return Pair of (correct predictions, total MSE loss)
      */
-    int evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+    std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 
 private:
     /**
-     * @brief Updates weights and biases for a mini-batch using gradient descent.
+     * @brief Updates weights and biases for a mini-batch and computes gradient norm.
      * @param mini_batch Vector of (input, target) pairs
      * @param eta Learning rate
+     * @return L2 norm of gradients for the mini-batch
      */
-    void update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta);
+    double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta);
 
     /**
      * @brief Computes the derivative of the cost function w.r.t. output activations.
@@ -127,6 +128,7 @@ private:
     std::vector<int> sizes;             ///< Sizes of each layer
     std::vector<Layer> layers;          ///< Layers of the network
     std::mt19937 rng;                   ///< Random number generator
+    double last_test_loss;              ///< Cached test loss from evaluate
 };
 
 /**
