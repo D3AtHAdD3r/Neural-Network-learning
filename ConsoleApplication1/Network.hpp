@@ -20,8 +20,9 @@ public:
     /**
      * @brief Constructs a network with specified layer sizes.
      * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
+     * @param lambda L2 regularization parameter (default: 0.0, no regularization)
      */
-    Network(const std::vector<int>& sizes);
+    Network(const std::vector<int>& sizes, double lambda = 0.0);
 
     /**
      * @brief Computes the network output for a given input.
@@ -129,6 +130,7 @@ private:
     std::vector<Layer> layers;          ///< Layers of the network
     std::mt19937 rng;                   ///< Random number generator
     double last_test_loss;              ///< Cached test loss from evaluate
+    double lambda;                      ///< L2 regularization parameter
 };
 
 /**

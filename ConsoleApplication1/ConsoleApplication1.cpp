@@ -7,18 +7,18 @@
 /*Changes made :
 1. Added detailed metrics.
 */
+
+/*
+Notes- 
+Lambda Value:
+lambda=0.01 may be too high for a small training set (3,000 MNIST samples). Common values for MNIST are 0.0001 to 0.001, scaled by the dataset size.
+*/
+
+
 int main() {
     try {
         // Example: [784, 30, 10] network
         std::vector<int> sizes = { 784, 30, 10 };
-        Network net(sizes);
-
-        //net.display_weights();
-        //net.display_biases();
-        //net.display_layer_weights(10);
-        //net.display_layer_biases(100);
-
-        // Load MNIST (pseudo-code)
         std::string train_images = "data/train-images-idx3-ubyte";
         std::string train_labels = "data/train-labels-idx1-ubyte";
         std::string test_images = "data/t10k-images-idx3-ubyte";
@@ -28,8 +28,16 @@ int main() {
         auto training_data = load_mnist_training(train_images, train_labels, 3000);
         auto test_data = load_mnist_test(test_images, test_labels, 1000);
 
-        // Train
-        net.SGD(training_data, 30, 32, 3.0, &test_data);
+        // Train without regularization
+        std::cout << "Training without L2 regularization...\n";
+        Network net_no_reg(sizes, 0.0);
+        net_no_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
+
+        // Train with L2 regularization
+        std::cout << "\nTraining with L2 regularization (lambda = 0.01)...\n";
+        Network net_with_reg(sizes, 0.0001);
+        net_with_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
+
         return 0;
     }
     catch (const std::bad_alloc& e) {

@@ -6,7 +6,7 @@
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()), last_test_loss(0.0) {
+Network::Network(const std::vector<int>& sizes, double lambda) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()), last_test_loss(0.0), lambda(lambda) {
     for (size_t i = 1; i < sizes.size(); ++i) {
         layers.emplace_back(sizes[i - 1], sizes[i], static_cast<unsigned int>(rng()));
     }
@@ -67,7 +67,11 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
                 << ": Accuracy = " << accuracy << "%"
                 << ", Correct = " << correct << "/" << n_test
                 << ", Loss = " << loss
-                << ", Gradient Norm = " << batch_gradient_norm << std::endl;
+                << ", Gradient Norm = " << batch_gradient_norm;
+            if (lambda > 0.0) {
+                std::cout << ", Lambda = " << lambda;
+            }
+            std::cout << std::endl;
         }
         else if (test_data) {
             auto [correct, total_loss] = evaluate(*test_data);
@@ -147,6 +151,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     Eigen::VectorXd delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
     nabla_b.back() = delta;
     nabla_w.back() = delta * activations[activations.size() - 2].transpose();
+    nabla_w.back() += lambda * layers[layers.size() - 1].get_weights(); // L2 regularization
 
     for (int l = 2; l < num_layers; ++l) {
         const Eigen::VectorXd& z = zs[zs.size() - l];
@@ -154,6 +159,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
         nabla_b[nabla_b.size() - l] = delta;
         nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose();
+        nabla_w[nabla_b.size() - l] += lambda * layers[layers.size() - l].get_weights(); // L2 regularization
     }
 
     return { nabla_b, nabla_w };
@@ -162,11 +168,18 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 /**
  * @brief Evaluates the network on test data and computes loss.
  * @param test_data Vector of (input, label) pairs
- * @return Pair of (correct predictions, total MSE loss)
+ * @return Pair of (correct predictions, total MSE loss including regularization)
  */
 std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data) {
     int correct = 0;
     double total_loss = 0.0;
+
+    double weight_norm = 0.0;
+    for (const auto& layer : layers) {
+        weight_norm += layer.get_weights().squaredNorm();
+    }
+
+
     for (const auto& [x, y] : test_data) {
         Eigen::VectorXd output = feedforward(x);
         int predicted = std::distance(output.data(), std::max_element(output.data(), output.data() + output.size()));
@@ -177,6 +190,8 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         Eigen::VectorXd diff = output - target;
         total_loss += diff.squaredNorm();
     }
+
+    total_loss += 0.5 * lambda * weight_norm; // Add L2 regularization term
     last_test_loss = total_loss; // Cache total loss
     return { correct, total_loss };
 }
