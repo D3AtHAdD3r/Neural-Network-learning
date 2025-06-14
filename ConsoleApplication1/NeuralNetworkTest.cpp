@@ -155,9 +155,9 @@ void NeuralNetworkTest::testNetworkConstructor()
     ++total_tests_;
     Network net(network_sizes_);
 
-    assertTrue(net.evaluate({}).first == 0, "Evaluate on empty data should return 0", __FILE__, __LINE__);
+    assertTrue(net.evaluate({}, 0).first == 0, "Evaluate on empty data should return 0", __FILE__, __LINE__);
 
-    auto [nabla_b, nabla_w] = net.backprop(Eigen::VectorXd(network_sizes_[0]), Eigen::VectorXd(network_sizes_.back()));
+    auto [nabla_b, nabla_w] = net.backprop(Eigen::VectorXd(network_sizes_[0]), Eigen::VectorXd(network_sizes_.back()), 0);
     assertTrue(nabla_b.size() == network_sizes_.size() - 1 && nabla_w.size() == network_sizes_.size() - 1,
         "Incorrect number of layers", __FILE__, __LINE__);
 
@@ -196,7 +196,7 @@ void NeuralNetworkTest::testNetworkBackprop()
     target.setZero();
     target(0) = 1.0;
 
-    auto [nabla_b, nabla_w] = net.backprop(input, target);
+    auto [nabla_b, nabla_w] = net.backprop(input, target, 1);
 
     assertTrue(nabla_b.size() == network_sizes_.size() - 1 && nabla_w.size() == network_sizes_.size() - 1,
         "Incorrect gradient vector sizes", __FILE__, __LINE__);
@@ -228,9 +228,9 @@ void NeuralNetworkTest::testNetworkSGD() {
     generateXORLikeDataset(training_data, test_data);
 
     // Run SGD and evaluate
-    auto [initial_correct, loss] = net.evaluate(test_data);
+    auto [initial_correct, loss] = net.evaluate(test_data, test_data.size());
     net.SGD(training_data, 400, 2, 1.0, &test_data);
-    int final_correct = net.evaluate(test_data).first;
+    int final_correct = net.evaluate(test_data, test_data.size()).first;
 
     assertTrue(final_correct >= initial_correct, "SGD did not improve accuracy", __FILE__, __LINE__);
    

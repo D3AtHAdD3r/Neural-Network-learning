@@ -53,13 +53,13 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
                 training_data.begin() + k,
                 training_data.begin() + std::min(k + mini_batch_size, n));
 
-            batch_gradient_norm += update_mini_batch(mini_batch, eta);
+            batch_gradient_norm += update_mini_batch(mini_batch, eta, n);
         }
 
         batch_gradient_norm /= num_batches;
        
         if (verbose && test_data) {
-            auto [correct, total_loss] = evaluate(*test_data);
+            auto [correct, total_loss] = evaluate(*test_data, n);
             double accuracy = (n_test > 0) ? (correct * 100.0 / n_test) : 0.0;
             double loss = (n_test > 0) ? total_loss / n_test : 0.0;
             std::cout << std::fixed << std::setprecision(4);
@@ -74,7 +74,7 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
             std::cout << std::endl;
         }
         else if (test_data) {
-            auto [correct, total_loss] = evaluate(*test_data);
+            auto [correct, total_loss] = evaluate(*test_data, n);
             std::cout << "Epoch " << j << ": Correct Predictions = " << correct << "/" << n_test << std::endl;
         }
         else {
@@ -87,9 +87,10 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
  * @brief Updates weights and biases for a mini-batch and computes gradient norm.
  * @param mini_batch Vector of (input, target) pairs
  * @param eta Learning rate
+ * @param n Number of training examples for L2 scaling
  * @return L2 norm of gradients for the mini-batch
  */
-double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta) {
+double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
     if (mini_batch.empty()) return 0.0;
 
     std::vector<Eigen::MatrixXd> weight_grads;
@@ -100,7 +101,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     }
 
     for (const auto& [x, y] : mini_batch) {
-        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y);
+        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
         for (size_t i = 0; i < layers.size(); ++i) {
             bias_grads[i] += delta_nabla_b[i];
             weight_grads[i] += delta_nabla_w[i];
@@ -126,10 +127,11 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
  * @brief Computes gradients for a single training example using backpropagation.
  * @param x Input vector
  * @param y Target vector
+ * @param n Number of training examples for L2 scaling
  * @return Pair of bias gradients and weight gradients for each layer
  */
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
-    const Eigen::VectorXd& x, const Eigen::VectorXd& y) {
+    const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
     std::vector<Eigen::VectorXd> nabla_b(layers.size());
     std::vector<Eigen::MatrixXd> nabla_w(layers.size());
 
@@ -151,7 +153,10 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     Eigen::VectorXd delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
     nabla_b.back() = delta;
     nabla_w.back() = delta * activations[activations.size() - 2].transpose();
-    nabla_w.back() += lambda * layers[layers.size() - 1].get_weights(); // L2 regularization
+    if (lambda > 0.0 && n > 0) {
+        nabla_w.back() += (lambda / n) * layers[layers.size() - 1].get_weights(); // Scaled L2
+    }
+    
 
     for (int l = 2; l < num_layers; ++l) {
         const Eigen::VectorXd& z = zs[zs.size() - l];
@@ -159,7 +164,9 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
         nabla_b[nabla_b.size() - l] = delta;
         nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose();
-        nabla_w[nabla_b.size() - l] += lambda * layers[layers.size() - l].get_weights(); // L2 regularization
+        if (lambda > 0.0 && n > 0) {
+            nabla_w[nabla_w.size() - l] += (lambda / n) * layers[layers.size() - l].get_weights(); // Scaled L2
+        }
     }
 
     return { nabla_b, nabla_w };
@@ -168,9 +175,10 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 /**
  * @brief Evaluates the network on test data and computes loss.
  * @param test_data Vector of (input, label) pairs
+ * @param n Number of training examples for L2 regularization scaling
  * @return Pair of (correct predictions, total MSE loss including regularization)
  */
-std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data) {
+std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n) {
     int correct = 0;
     double total_loss = 0.0;
 
@@ -190,8 +198,10 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         Eigen::VectorXd diff = output - target;
         total_loss += diff.squaredNorm();
     }
-
-    total_loss += 0.5 * lambda * weight_norm; // Add L2 regularization term
+    if (lambda > 0.0 && n > 0) {
+        total_loss += 0.5 * lambda * weight_norm / n; // Scaled L2 regularization
+    }
+    
     last_test_loss = total_loss; // Cache total loss
     return { correct, total_loss };
 }
@@ -229,9 +239,10 @@ double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, i
 /**
  * @brief Computes the L2 norm of gradients for a mini-batch.
  * @param mini_batch Vector of (input, target) pairs
+ * @param n Number of training examples for L2 regularization scaling
  * @return L2 norm of gradients
  */
-double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch)
+double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n)
 {
     std::vector<Eigen::MatrixXd> weight_grads;
     std::vector<Eigen::VectorXd> bias_grads;
@@ -241,7 +252,7 @@ double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorX
     }
 
     for (const auto& [x, y] : mini_batch) {
-        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y);
+        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
         for (size_t i = 0; i < layers.size(); ++i) {
             bias_grads[i] += delta_nabla_b[i];
             weight_grads[i] += delta_nabla_w[i];
@@ -342,9 +353,10 @@ void Network::display_layer_weights(int max_elements) const {
  * @brief Displays gradients computed by backpropagation for a single example.
  * @param x Input vector
  * @param y Target vector
+ * @param n Number of training examples for L2 regularization scaling
  */
-void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y) {
-    auto [nabla_b, nabla_w] = backprop(x, y);
+void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
+    auto [nabla_b, nabla_w] = backprop(x, y, n);
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "=== Bias Gradients (from backprop) ===" << std::endl;
     for (size_t i = 0; i < nabla_b.size(); ++i) {

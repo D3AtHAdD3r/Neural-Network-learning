@@ -6,6 +6,7 @@
 
 /*Changes made :
 1. Added detailed metrics.
+2. Implemented L2 Regularization and L2 Scaling.
 */
 
 /*
@@ -25,7 +26,7 @@ int main() {
         std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
         // Load smaller dataset for testing
-        auto training_data = load_mnist_training(train_images, train_labels, 3000);
+        auto training_data = load_mnist_training(train_images, train_labels, 10000);
         auto test_data = load_mnist_test(test_images, test_labels, 1000);
 
         // Train without regularization

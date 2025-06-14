@@ -71,8 +71,9 @@ public:
      * @brief Displays gradients computed by backpropagation for a single example.
      * @param x Input vector
      * @param y Target vector
+     * @param n Number of training examples for L2 regularization scaling
      */
-    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y);
+    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
 public:
     //Temporarily public
@@ -80,26 +81,29 @@ public:
      * @brief Computes gradients for a single training example using backpropagation.
      * @param x Input vector
      * @param y Target vector
+     * @param n Number of training examples for L2 regularization scaling
      * @return Pair of bias gradients and weight gradients for each layer
      */
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
-        const Eigen::VectorXd& x, const Eigen::VectorXd& y);
+        const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
     /**
      * @brief Evaluates the network on test data and computes loss.
      * @param test_data Vector of (input, label) pairs
+     * @param n Number of training examples for L2 regularization scaling
      * @return Pair of (correct predictions, total MSE loss)
      */
-    std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+    std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
 
 private:
     /**
      * @brief Updates weights and biases for a mini-batch and computes gradient norm.
      * @param mini_batch Vector of (input, target) pairs
      * @param eta Learning rate
+     * param n Number of training examples for L2 regularization scaling
      * @return L2 norm of gradients for the mini-batch
      */
-    double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta);
+    double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
 
     /**
      * @brief Computes the derivative of the cost function w.r.t. output activations.
@@ -120,9 +124,10 @@ private:
     /**
      * @brief Computes the L2 norm of gradients for a mini-batch.
      * @param mini_batch Vector of (input, target) pairs
+     * @param n Number of training examples for L2 regularization scaling
      * @return L2 norm of gradients
      */
-    double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch);
+    double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:
     int num_layers;                     ///< Number of layers
