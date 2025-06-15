@@ -111,6 +111,15 @@ public:
 	 * @return Number of inputs
 	 */
 	const int get_num_inputs() const { return num_inputs_; };
+
+	/**
+	 * @brief setter
+	 */
+	void set_weights(const Eigen::MatrixXd& weights);
+	/**
+	 * @brief setter
+	 */
+	void set_biases(const Eigen::VectorXd& biases);
 };
 
 #endif // LAYER_HPP

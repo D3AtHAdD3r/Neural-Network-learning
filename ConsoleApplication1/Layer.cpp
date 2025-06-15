@@ -129,3 +129,14 @@ std::string Layer::print_parameters(bool json_format) const {
     }
     return ss.str();
 }
+
+void Layer::set_weights(const Eigen::MatrixXd& weights)
+{
+    assert(weights.rows() == weights_.rows() && weights.cols() == weights_.cols());
+    weights_ = weights;
+}
+
+void Layer::set_biases(const Eigen::VectorXd& biases) {
+    assert(biases.size() == biases_.size());
+    biases_ = biases;
+}

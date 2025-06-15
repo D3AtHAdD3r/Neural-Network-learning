@@ -7,6 +7,7 @@
 /*Changes made :
 1. Added detailed metrics.
 2. Implemented L2 Regularization and L2 Scaling.
+3. Added a brief unit test for gradient checking
 */
 
 /*
@@ -35,7 +36,7 @@ int main() {
         net_no_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
 
         // Train with L2 regularization
-        std::cout << "\nTraining with L2 regularization (lambda = 0.01)...\n";
+        std::cout << "\nTraining with L2 regularization ...\n";
         Network net_with_reg(sizes, 0.0001);
         net_with_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
 

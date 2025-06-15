@@ -399,6 +399,36 @@ void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::
 }
 
 /**
+ * @brief Sets the weights of a specific layer.
+ * @param layer_idx Index of the layer
+ * @param weights New weight matrix
+ */
+void Network::set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights) {
+    if (layer_idx >= layers.size()) {
+        throw std::out_of_range("Layer index out of bounds");
+    }
+    if (weights.rows() != layers[layer_idx].get_num_neurons() || weights.cols() != layers[layer_idx].get_num_inputs()) {
+        throw std::invalid_argument("Weight matrix dimensions mismatch");
+    }
+    layers[layer_idx].set_weights(weights);
+}
+
+/**
+ * @brief Sets the biases of a specific layer.
+ * @param layer_idx Index of the layer
+ * @param biases New bias vector
+ */
+void Network::set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases) {
+    if (layer_idx >= layers.size()) {
+        throw std::out_of_range("Layer index out of bounds");
+    }
+    if (biases.size() != layers[layer_idx].get_num_neurons()) {
+        throw std::invalid_argument("Bias vector dimension mismatch");
+    }
+    layers[layer_idx].set_biases(biases);
+}
+
+/**
  * @brief Applies sigmoid activation element-wise to a vector.
  * @param z Input vector
  * @return Sigmoid of each element

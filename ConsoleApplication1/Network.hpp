@@ -75,6 +75,20 @@ public:
      */
     void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
+    /**
+     * @brief Sets the weights of a specific layer.
+     * @param layer_idx Index of the layer
+     * @param weights New weight matrix
+     */
+    void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
+
+    /**
+     * @brief Sets the biases of a specific layer.
+     * @param layer_idx Index of the layer
+     * @param biases New bias vector
+     */
+    void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
+
 public:
     //Temporarily public
     /**
@@ -113,6 +127,9 @@ private:
      */
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 
+public:
+    //getters
+    const std::vector<Layer>& get_layers() const { return layers; }
 private:
     /**
      * @brief Computes the mean squared error loss over test data.

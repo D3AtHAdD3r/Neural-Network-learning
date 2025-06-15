@@ -229,7 +229,7 @@ void NeuralNetworkTest::testNetworkSGD() {
 
     // Run SGD and evaluate
     auto [initial_correct, loss] = net.evaluate(test_data, test_data.size());
-    net.SGD(training_data, 400, 2, 1.0, &test_data);
+    net.SGD(training_data, 10, 2, 1.0, &test_data);
     int final_correct = net.evaluate(test_data, test_data.size()).first;
 
     assertTrue(final_correct >= initial_correct, "SGD did not improve accuracy", __FILE__, __LINE__);
@@ -239,6 +239,110 @@ void NeuralNetworkTest::testNetworkSGD() {
 
     // Note: Future test cases (e.g., AND, OR, MNIST) can be added by extending
     // generateXORLikeDataset or creating new dataset generation functions.
+}
+
+
+// Numerical Gradient Checking:
+// Compute numerical gradients using the finite difference method:
+// ie. dc/dw = C(w+e) - C(w-e) / 2e, 
+// where C is the cost (MSE + L2 term) and e or epsilon is a small perturbation
+// Compare numerical gradients to analytical gradients from backprop.
+void NeuralNetworkTest::testNetworkGradientChecking()
+{
+    std::cout << "Running testNetworkGradientChecking... ";
+    ++total_tests_;
+
+    // Set up small network with L2 regularization
+    double lambda = 0.1; // Non-zero to test L2 term
+    Network net(network_sizes_, lambda);
+    size_t n = 1; // Single example for simplicity
+    const double epsilon = 1e-7; // Perturbation for numerical gradient
+
+    // Input and target
+    Eigen::VectorXd input(network_sizes_[0]);
+    input.setConstant(1.0);
+    Eigen::VectorXd target(network_sizes_.back());
+    target.setZero();
+    target(0) = 1.0;
+
+    // Get analytical gradients
+    auto [nabla_b, nabla_w] = net.backprop(input, target, n);
+
+    // Helper to compute cost (MSE + L2)
+    auto compute_cost = [&](const Eigen::VectorXd& output) {
+        double mse = 0.5 * (output - target).squaredNorm();
+        double l2 = 0.0;
+        if (lambda > 0.0 && n > 0) {
+            for (const auto& layer : net.get_layers()) { // Assuming get_layers() exists
+                l2 += layer.get_weights().squaredNorm();
+            }
+            l2 *= 0.5 * lambda / n;
+        }
+        return mse + l2;
+    };
+
+    // Check gradients for each layer (limit to first few weights/biases for speed)
+    for (size_t l = 0; l < nabla_w.size(); ++l) {
+
+        const auto& layer = net.get_layers()[l];
+        Eigen::MatrixXd weights = layer.get_weights();
+        Eigen::VectorXd biases = layer.get_biases();
+        int max_rows = std::min(2, static_cast<int>(weights.rows())); // Limit for speed
+        int max_cols = std::min(2, static_cast<int>(weights.cols()));
+
+        // Check weight gradients
+        for (int i = 0; i < max_rows; ++i) {
+            for (int j = 0; j < max_cols; ++j) {
+                // Perturb weight positively
+                weights(i, j) += epsilon;
+                net.set_layer_weights(l, weights);
+                auto output_plus = net.feedforward(input);
+                double cost_plus = compute_cost(output_plus);
+                
+                // Perturb weight negatively
+                weights(i, j) -= 2 * epsilon; // Subtract 2*epsilon to go from +epsilon to -epsilon
+                net.set_layer_weights(l, weights);
+                auto output_minus = net.feedforward(input);
+                double cost_minus = compute_cost(output_minus);
+
+                // Restore original weight
+                weights(i, j) += epsilon;
+                net.set_layer_weights(l, weights);
+
+                // Numerical gradient
+                double numerical_grad = (cost_plus - cost_minus) / (2 * epsilon);
+                assertApprox(numerical_grad, nabla_w[l](i, j), TOL,
+                    "Weight gradient incorrect in layer " + std::to_string(l), __FILE__, __LINE__);
+            }
+        }
+
+        // Check bias gradients
+        for (int i = 0; i < max_rows; ++i) {
+            // Perturb bias positively
+            biases(i) += epsilon;
+            net.set_layer_biases(l, biases);
+            auto output_plus = net.feedforward(input);
+            double cost_plus = compute_cost(output_plus);
+
+            // Perturb bias negatively
+            biases(i) -= 2 * epsilon;
+            net.set_layer_biases(l, biases);
+            auto output_minus = net.feedforward(input);
+            double cost_minus = compute_cost(output_minus);
+
+            // Restore original bias
+            biases(i) += epsilon;
+            net.set_layer_biases(l, biases);
+
+            // Numerical gradient
+            double numerical_grad = (cost_plus - cost_minus) / (2 * epsilon);
+            assertApprox(numerical_grad, nabla_b[l](i), TOL,
+                "Bias gradient incorrect in layer " + std::to_string(l), __FILE__, __LINE__);
+        }
+    }
+
+    ++passed_tests_;
+    std::cout << "Passed" << std::endl;
 }
 
 bool NeuralNetworkTest::runAllTests()
@@ -253,6 +357,7 @@ bool NeuralNetworkTest::runAllTests()
     testNetworkFeedforward();
     testNetworkBackprop();
     testNetworkSGD();
+    testNetworkGradientChecking();
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
 }

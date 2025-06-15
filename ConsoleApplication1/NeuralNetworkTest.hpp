@@ -89,6 +89,11 @@ public:
      */
     void testNetworkSGD();
 
+    /**
+     * @brief Tests Network gradient checking to verify L2 regularization.
+     */
+    void testNetworkGradientChecking();
+
 public:
     /**
      * @brief Runs all tests and reports results.
