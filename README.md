@@ -14,3 +14,7 @@
   - Removed neuron class
   - Added unit test component
   - Added Doxygen comments to classes
+4. master-1.2
+  - Added detailed metrics.
+  - Implemented L2 Regularization and L2 Scaling.
+  - Added a brief unit test for gradient checking
