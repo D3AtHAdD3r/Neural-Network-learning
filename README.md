@@ -8,5 +8,15 @@
 
 
 #Branches:
-1. Master: A feedforward neural network to classify handwritten digits (0–9) from the MNIST dataset.(Heavily commented code).
-			
+1. Master: A feedforward neural network to classify handwritten digits (0â€“9) from the MNIST dataset.(Heavily commented code).
+2. master-1.0: Neuron centric design, with added layer class.
+3. master-1.1: 
+  - Removed neuron class
+  - Added unit test component
+  - Added Doxygen comments to classes
+4. master-1.2
+  - Added detailed metrics.
+  - Implemented L2 Regularization and L2 Scaling.
+  - Added a brief unit test for gradient checking.
+  - Added cross-entropy.
+  - Added a brief activation interface with sigmoid only support currently.
