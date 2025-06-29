@@ -3,26 +3,32 @@
 #define NETWORK_H
 
 #include "Layer.hpp"
+#include "SigmoidActivation.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <iostream>
+#include <memory>  // For unique_ptr
 
 /**
  * @brief A feedforward neural network with sigmoid activation.
  *
  * Implements a multi-layer neural network for tasks like MNIST classification,
  * supporting feedforward, backpropagation, and stochastic gradient descent (SGD).
+ * Supports both MSE and Cross-Entropy loss functions as well as L2 implementation.
  */
 class Network {
 public:
+    enum class LossType { MSE, CROSS_ENTROPY };  // New enum for loss selection
+    enum class NeuronType { SIGMOID };  // Start with only sigmoid
     /**
      * @brief Constructs a network with specified layer sizes.
      * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
      * @param lambda L2 regularization parameter (default: 0.0, no regularization)
+     * @param loss_type Type of loss function to use (default: MSE)
      */
-    Network(const std::vector<int>& sizes, double lambda = 0.0);
+    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID);
 
     /**
      * @brief Computes the network output for a given input.
@@ -153,20 +159,9 @@ private:
     std::mt19937 rng;                   ///< Random number generator
     double last_test_loss;              ///< Cached test loss from evaluate
     double lambda;                      ///< L2 regularization parameter
+    LossType loss_type_;                ///< Type of loss function to use
+    NeuronType neuron_type_;            ///< Track chosen neuron type
+    std::unique_ptr<Activation> activation_;  ///< Dynamic activation instance
 };
-
-/**
- * @brief Applies sigmoid activation element-wise to a vector.
- * @param z Input vector
- * @return Sigmoid of each element
- */
-Eigen::VectorXd sigmoid(const Eigen::VectorXd& z);
-
-/**
- * @brief Computes the derivative of the sigmoid function element-wise.
- * @param z Input vector
- * @return Sigmoid derivative for each element
- */
-Eigen::VectorXd sigmoid_prime(const Eigen::VectorXd& z);
 
 #endif

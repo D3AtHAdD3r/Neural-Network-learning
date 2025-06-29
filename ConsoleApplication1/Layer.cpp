@@ -19,25 +19,21 @@ double Layer::sigmoid(double x) {
  * @param num_neurons Number of neurons in the layer
  * @param seed Random seed for initialization
  */
-Layer::Layer(int num_inputs, int num_neurons, unsigned int seed)
+Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, unsigned int seed)
     : num_inputs_(num_inputs), num_neurons_(num_neurons),
     weights_(num_neurons, num_inputs), biases_(num_neurons),
     activations_(Eigen::VectorXd::Zero(num_neurons)),
     pre_activations_(num_neurons), input_(num_inputs),
-    rng_(seed), has_valid_activations_(false) {
+    rng_(seed), has_valid_activations_(false), activation_(activation) {
     // Xavier initialization
     double stddev = std::sqrt(2.0 / (num_inputs + 1));
     std::normal_distribution<double> dist(0.0, stddev);
 
-    // Initialize weights
+    // Initialize weights and biases (unchanged)
     for (int i = 0; i < num_neurons; ++i) {
         for (int j = 0; j < num_inputs; ++j) {
             weights_(i, j) = dist(rng_);
         }
-    }
-
-    // Initialize biases
-    for (int i = 0; i < num_neurons; ++i) {
         biases_(i) = dist(rng_);
     }
 }
@@ -51,7 +47,7 @@ Layer::Layer(int num_inputs, int num_neurons, unsigned int seed)
 Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     input_ = input;
     pre_activations_ = weights_ * input + biases_;
-    activations_ = pre_activations_.unaryExpr([](double x) { return sigmoid(x); });
+    activations_ = activation_->activate(pre_activations_);
     has_valid_activations_ = true;
     return activations_;
 }
@@ -65,8 +61,8 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
 void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     Eigen::MatrixXd& weight_grads,
     Eigen::VectorXd& bias_grads) const {
-    Eigen::VectorXd sigmoid_derivs = activations_.cwiseProduct(Eigen::VectorXd::Ones(num_neurons_) - activations_);
-    Eigen::VectorXd adjusted_deltas = deltas.cwiseProduct(sigmoid_derivs);
+    Eigen::VectorXd activation_derives = activation_->derivative(&activations_, &pre_activations_);
+    Eigen::VectorXd adjusted_deltas = deltas.cwiseProduct(activation_derives);
     weight_grads = adjusted_deltas * input_.transpose();
     bias_grads = adjusted_deltas;
 }

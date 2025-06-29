@@ -1,0 +1,7 @@
+
+1. Network.cpp:
+delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
+Eigen::VectorXd sp = sigmoid_prime(z);
+Instead on using sigmoid_prime(), replace it with function call to activation_ class.
+
+2. Activation interface- vtable lookup is costly, maybe use c style pointers or different approch so to minimize overhead.

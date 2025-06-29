@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <string>
 #include <random>
+#include "Activation.hpp"  // New include
 
 /**
  * @brief A neural network layer with sigmoid activation.
@@ -26,6 +27,7 @@ private:
 	Eigen::VectorXd input_;             ///< Cached input for gradient computation
 	std::mt19937 rng_;                  ///< Random number generator for initialization
 	bool has_valid_activations_;        ///< Tracks if activations are valid
+	const Activation* activation_;      ///< Pointer to activation function (owned externally)
 
 private:
 	/**
@@ -33,16 +35,17 @@ private:
 	 * @param x Input value
 	 * @return Sigmoid of x (1 / (1 + exp(-x)))
 	 */
-	static double sigmoid(double x);
+	static double sigmoid(double x);  // Can be removed or kept for legacy use
 
 public:
 	/**
-	 * @brief Constructs a layer with specified input size and number of neurons.
+	 * @brief Constructs a layer with specified input size, number of neurons, and activation.
 	 * @param num_inputs Size of input vector
 	 * @param num_neurons Number of neurons in the layer
+	 * @param activation Activation function to use
 	 * @param seed Random seed for weight/bias initialization
 	 */
-	Layer(int num_inputs, int num_neurons, unsigned int seed = 42);
+	Layer(int num_inputs, int num_neurons, const Activation* activation, unsigned int seed = 42);
 
 	/**
 	 * @brief Computes the forward pass, producing activations for the input.

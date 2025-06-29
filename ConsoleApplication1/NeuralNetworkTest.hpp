@@ -1,4 +1,6 @@
 #pragma once
+#include"Network.hpp"
+//#include "SigmoidActivation.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <string>
@@ -20,7 +22,7 @@ public:
      * @param network_sizes Network layer sizes (default: {2, 3, 2})
      */
     NeuralNetworkTest(int layer_inputs = 2, int layer_neurons = 3, unsigned int seed = 42,
-        const std::vector<int>& network_sizes = { 2, 3, 2 });
+        const std::vector<int>& network_sizes = { 2, 3, 2 }, Network::NeuronType neuron_type = Network::NeuronType::SIGMOID);
 
 private:
     
@@ -119,5 +121,7 @@ private:
     std::vector<int> network_sizes_;    ///< Network layer sizes
     int passed_tests_;                  ///< Count of passed tests
     int total_tests_;                   ///< Total tests run
+    Network::NeuronType neuron_type_;            ///< Track chosen neuron type
+    std::unique_ptr<Activation> activation_;  ///< Dynamic activation instance
 };
 

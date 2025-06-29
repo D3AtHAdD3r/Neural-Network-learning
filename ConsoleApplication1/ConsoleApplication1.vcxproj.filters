@@ -30,6 +30,9 @@
     <ClCompile Include="NeuralNetworkTest.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="LegacyFuncs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mnistLoader.h">
@@ -47,5 +50,17 @@
     <ClInclude Include="NeuralNetworkTest.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Activation.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SigmoidActivation.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LegacyFuncs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="TODO.txt" />
   </ItemGroup>
 </Project>

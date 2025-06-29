@@ -1,14 +1,24 @@
 #include "NeuralNetworkTest.hpp"
-#include"Network.hpp"
+#include "LegacyFuncs.h"
+//#include"Network.hpp"
 #include <iostream>
 #include <cmath>
 #include <cassert>
 
 
-NeuralNetworkTest::NeuralNetworkTest(int layer_inputs, int layer_neurons, unsigned int seed, const std::vector<int>& network_sizes) :
+NeuralNetworkTest::NeuralNetworkTest(int layer_inputs, int layer_neurons, unsigned int seed, const std::vector<int>& network_sizes, Network::NeuronType neuron_type) :
     layer_inputs_(layer_inputs), layer_neurons_(layer_neurons), seed_(seed),
     network_sizes_(network_sizes), passed_tests_(0), total_tests_(0)
-{}
+{
+    // Dynamically create activation based on neuron_type
+    switch (neuron_type_) {
+    case Network::NeuronType::SIGMOID:
+        activation_ = std::make_unique<SigmoidActivation>();
+        break;
+    default:
+        throw std::runtime_error("Unsupported neuron type");
+    }
+}
 
 
 void NeuralNetworkTest::assertTrue(bool cond, const std::string& message, const char* file, int line)
@@ -31,7 +41,7 @@ void NeuralNetworkTest::testLayerConstructor()
 {
     std::cout << "Running testLayerConstructor... ";
     ++total_tests_;
-    Layer layer(layer_inputs_, layer_neurons_, seed_);
+    Layer layer(layer_inputs_, layer_neurons_, activation_.get(), seed_);
     const auto& weights = layer.get_weights();
     const auto& biases = layer.get_biases();
 
@@ -58,7 +68,7 @@ void NeuralNetworkTest::testLayerForward()
 {
     std::cout << "Running testLayerForward... ";
     ++total_tests_;
-    Layer layer(layer_inputs_, layer_neurons_, seed_);
+    Layer layer(layer_inputs_, layer_neurons_, activation_.get(), seed_);
     Eigen::VectorXd input(layer_inputs_);
     input.setConstant(1.0);
     auto output = layer.forward(input);
@@ -82,7 +92,7 @@ void NeuralNetworkTest::testLayerGradients()
 {
     std::cout << "Running testLayerGradients... ";
     ++total_tests_;
-    Layer layer(layer_inputs_, layer_neurons_, seed_);
+    Layer layer(layer_inputs_, layer_neurons_, activation_.get(), seed_);
     Eigen::VectorXd input(layer_inputs_);
 
     // Initialize input dynamically based on layer_inputs_
@@ -122,7 +132,7 @@ void NeuralNetworkTest::testLayerUpdateParameters()
 {
     std::cout << "Running testLayerUpdateParameters... ";
     ++total_tests_;
-    Layer layer(layer_inputs_, layer_neurons_, seed_);
+    Layer layer(layer_inputs_, layer_neurons_, activation_.get(), seed_);
 
     Eigen::MatrixXd weight_grads(layer_neurons_, layer_inputs_);
     weight_grads.setConstant(0.1);

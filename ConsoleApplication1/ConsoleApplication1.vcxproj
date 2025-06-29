@@ -141,16 +141,23 @@
   <ItemGroup>
     <ClCompile Include="ConsoleApplication1.cpp" />
     <ClCompile Include="Layer.cpp" />
+    <ClCompile Include="LegacyFuncs.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="NeuralNetworkTest.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Activation.hpp" />
     <ClInclude Include="Layer.hpp" />
+    <ClInclude Include="LegacyFuncs.h" />
     <ClInclude Include="mnistLoader.h" />
     <ClInclude Include="Network.hpp" />
     <ClInclude Include="NeuralNetworkTest.hpp" />
+    <ClInclude Include="SigmoidActivation.hpp" />
     <ClInclude Include="utils.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="TODO.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

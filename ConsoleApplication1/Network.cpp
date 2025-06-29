@@ -6,9 +6,23 @@
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes, double lambda) : sizes(sizes), num_layers(sizes.size()), rng(std::random_device{}()), last_test_loss(0.0), lambda(lambda) {
+Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type)
+    : 
+    sizes(sizes), num_layers(sizes.size()), 
+    rng(std::random_device{}()), last_test_loss(0.0), lambda(lambda), 
+    loss_type_(loss_type), neuron_type_(neuron_type) {
+
+    // Dynamically create activation based on neuron_type
+    switch (neuron_type_) {
+        case NeuronType::SIGMOID:
+            activation_ = std::make_unique<SigmoidActivation>();
+            break;
+        default:
+            throw std::runtime_error("Unsupported neuron type");
+    }
+
     for (size_t i = 1; i < sizes.size(); ++i) {
-        layers.emplace_back(sizes[i - 1], sizes[i], static_cast<unsigned int>(rng()));
+        layers.emplace_back(sizes[i - 1], sizes[i], activation_.get(), static_cast<unsigned int>(rng()));
     }
 }
 
@@ -123,6 +137,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     return norm;
 }
 
+
 /**
  * @brief Computes gradients for a single training example using backpropagation.
  * @param x Input vector
@@ -150,18 +165,28 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         activations.push_back(layers[i].get_activations());
     }
 
-    Eigen::VectorXd delta = cost_derivative(activations.back(), y).cwiseProduct(sigmoid_prime(zs.back()));
+    Eigen::VectorXd delta;
+    if (neuron_type_ == NeuronType::SIGMOID && (loss_type_ == LossType::MSE || loss_type_ == LossType::CROSS_ENTROPY)) {
+        delta = cost_derivative(activations.back(), y).cwiseProduct(activation_->derivative(&activations.back(), &zs.back()));
+    }
+    else {
+        throw std::runtime_error("Unsupported neuron type or loss function combination in backprop");
+    }
+
     nabla_b.back() = delta;
     nabla_w.back() = delta * activations[activations.size() - 2].transpose();
     if (lambda > 0.0 && n > 0) {
         nabla_w.back() += (lambda / n) * layers[layers.size() - 1].get_weights(); // Scaled L2
     }
-    
+
 
     for (int l = 2; l < num_layers; ++l) {
-        const Eigen::VectorXd& z = zs[zs.size() - l];
-        Eigen::VectorXd sp = sigmoid_prime(z);
+        const Eigen::VectorXd& current_activations = activations[activations.size() - l];  // Activations of current layer
+        const Eigen::VectorXd& current_pre_activations = zs[zs.size() - l];  // Pre-activations of current layer
+
+        Eigen::VectorXd sp = activation_->derivative(&current_activations, &current_pre_activations);
         delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
+
         nabla_b[nabla_b.size() - l] = delta;
         nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose();
         if (lambda > 0.0 && n > 0) {
@@ -195,8 +220,17 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
         Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
         target(y) = 1.0; // One-hot encoding for target label
-        Eigen::VectorXd diff = output - target;
-        total_loss += diff.squaredNorm();
+        
+        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+            Eigen::VectorXd diff = output - target;
+            total_loss += diff.squaredNorm();
+        }
+        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+            for (int i = 0; i < output.size(); ++i) {
+                double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
+                total_loss += -(target(i) * std::log(a) + (1 - target(i)) * std::log(1 - a));
+            }
+        }
     }
     if (lambda > 0.0 && n > 0) {
         total_loss += 0.5 * lambda * weight_norm / n; // Scaled L2 regularization
@@ -213,7 +247,10 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
  * @return Cost derivative
  */
 Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const {
-    return output_activations - y;
+    if (neuron_type_ == NeuronType::SIGMOID && (loss_type_ == LossType::MSE || loss_type_ == LossType::CROSS_ENTROPY)) {
+        return output_activations - y;  // Common derivative for sigmoid with MSE or CE
+    }
+    throw std::runtime_error("Unsupported neuron type or loss function combination");
 }
 
 /**
@@ -428,21 +465,3 @@ void Network::set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases) 
     layers[layer_idx].set_biases(biases);
 }
 
-/**
- * @brief Applies sigmoid activation element-wise to a vector.
- * @param z Input vector
- * @return Sigmoid of each element
- */
-Eigen::VectorXd sigmoid(const Eigen::VectorXd& z) {
-    return z.unaryExpr([](double x) { return 1.0 / (1.0 + std::exp(-x)); });
-}
-
-/**
- * @brief Computes the derivative of the sigmoid function element-wise.
- * @param z Input vector
- * @return Sigmoid derivative for each element
- */
-Eigen::VectorXd sigmoid_prime(const Eigen::VectorXd& z) {
-    Eigen::VectorXd sz = sigmoid(z);
-    return sz.cwiseProduct(Eigen::VectorXd::Ones(sz.size()) - sz);
-}

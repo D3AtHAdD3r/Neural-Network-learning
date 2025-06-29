@@ -1,19 +1,23 @@
 #include "NeuralNetworkTest.hpp"
 #include "Network.hpp"
 #include "mnistLoader.h"
-#include"utils.h"
+#include "utils.h"
 #include <iostream>
 
 /*Changes made :
 1. Added detailed metrics.
 2. Implemented L2 Regularization and L2 Scaling.
 3. Added a brief unit test for gradient checking
+4. Added cross-entropy.
+5. Added a brief activation interface with sigmoid only support currently.
 */
 
 /*
 Notes- 
 Lambda Value:
 lambda=0.01 may be too high for a small training set (3,000 MNIST samples). Common values for MNIST are 0.0001 to 0.001, scaled by the dataset size.
+Reduce the learning rate over time (e.g., using a scheduler or smaller initial value like 0.1) to fine-tune the final accuracy beyond 90%.
+Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps prevent overfitting on the test set.
 */
 
 
@@ -27,18 +31,18 @@ int main() {
         std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
         // Load smaller dataset for testing
-        auto training_data = load_mnist_training(train_images, train_labels, 10000);
+        auto training_data = load_mnist_training(train_images, train_labels, 5000);
         auto test_data = load_mnist_test(test_images, test_labels, 1000);
 
-        // Train without regularization
-        std::cout << "Training without L2 regularization...\n";
-        Network net_no_reg(sizes, 0.0);
-        net_no_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
+        //Train with mse
+        std::cout << "Training with mse...(L2 implemented)\n";
+        Network net_with_mse(sizes, 0.0001, Network::LossType::MSE);
+        net_with_mse.SGD(training_data, 10, 32, 3.0, &test_data, true);
 
-        // Train with L2 regularization
-        std::cout << "\nTraining with L2 regularization ...\n";
-        Network net_with_reg(sizes, 0.0001);
-        net_with_reg.SGD(training_data, 10, 32, 3.0, &test_data, true);
+        //Train with cross-ent
+        std::cout << "Training with cross-entropy...(L2 implemented)\n";
+        Network net_with_cxp(sizes, 0.0001, Network::LossType::CROSS_ENTROPY);
+        net_with_cxp.SGD(training_data, 10, 32, 3.0, &test_data, true);
 
         return 0;
     }
