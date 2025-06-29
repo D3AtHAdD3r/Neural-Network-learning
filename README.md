@@ -17,4 +17,6 @@
 4. master-1.2
   - Added detailed metrics.
   - Implemented L2 Regularization and L2 Scaling.
-  - Added a brief unit test for gradient checking
+  - Added a brief unit test for gradient checking.
+  - Added cross-entropy.
+  - Added a brief activation interface with sigmoid only support currently.
