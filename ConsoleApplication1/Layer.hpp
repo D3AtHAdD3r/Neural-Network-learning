@@ -6,7 +6,8 @@
 #include <Eigen/Dense>
 #include <string>
 #include <random>
-#include "Activation.hpp"  // New include
+#include "Activation.hpp"  
+#include "ComputationContext.hpp"
 
 /**
  * @brief A neural network layer with sigmoid activation.
@@ -28,14 +29,7 @@ private:
 	std::mt19937 rng_;                  ///< Random number generator for initialization
 	bool has_valid_activations_;        ///< Tracks if activations are valid
 	const Activation* activation_;      ///< Pointer to activation function (owned externally)
-
-private:
-	/**
-	 * @brief Sigmoid activation function.
-	 * @param x Input value
-	 * @return Sigmoid of x (1 / (1 + exp(-x)))
-	 */
-	static double sigmoid(double x);  // Can be removed or kept for legacy use
+	ComputationContext* context_;       ///< Computation context for operations
 
 public:
 	/**
@@ -45,7 +39,7 @@ public:
 	 * @param activation Activation function to use
 	 * @param seed Random seed for weight/bias initialization
 	 */
-	Layer(int num_inputs, int num_neurons, const Activation* activation, unsigned int seed = 42);
+	Layer(int num_inputs, int num_neurons, const Activation* activation, ComputationContext* context, unsigned int seed = 42);
 
 	/**
 	 * @brief Computes the forward pass, producing activations for the input.
@@ -70,7 +64,7 @@ public:
 	 * @param bias_grads Bias gradients (num_neurons)
 	 */
 	void update_parameters(const Eigen::MatrixXd& weight_grads,
-		const Eigen::VectorXd& bias_grads);
+		const Eigen::VectorXd& bias_grads, double scale = 1.0);
 
 	/**
 	 * @brief Prints layer parameters (weights, biases, activations).

@@ -33,6 +33,12 @@
     <ClCompile Include="LegacyFuncs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="CPUComputationContext.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GPUComputationContext.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mnistLoader.h">
@@ -59,8 +65,20 @@
     <ClInclude Include="LegacyFuncs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ComputationContext.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CPUComputationContext.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GPUComputationContext.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="TODO.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="test_cuda.cu" />
   </ItemGroup>
 </Project>

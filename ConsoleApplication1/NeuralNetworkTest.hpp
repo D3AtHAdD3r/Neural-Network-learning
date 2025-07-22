@@ -1,5 +1,7 @@
 #pragma once
 #include"Network.hpp"
+#include "CPUComputationContext.hpp"
+#include "GPUComputationContext.hpp"
 //#include "SigmoidActivation.hpp"
 #include <Eigen/Dense>
 #include <vector>
@@ -24,6 +26,8 @@ public:
     NeuralNetworkTest(int layer_inputs = 2, int layer_neurons = 3, unsigned int seed = 42,
         const std::vector<int>& network_sizes = { 2, 3, 2 }, Network::NeuronType neuron_type = Network::NeuronType::SIGMOID);
 
+    ~NeuralNetworkTest();
+
 private:
     
     /**
@@ -47,28 +51,44 @@ private:
      */
     void assertApprox(double a, double b, double tol, const std::string& message, const char* file, int line);
 
+    /**
+     * @brief Computes activation for a vector of pre-activations.
+     * @param z Pre-activation values
+     * @return Activated values
+     */
+    Eigen::VectorXd computeActivation(const Eigen::VectorXd& z) const;
+
+    /**
+     * @brief Computes activation derivative for a vector of pre-activations.
+     * @param z Pre-activation values
+     * @return Derivative values
+     */
+    Eigen::VectorXd computeActivationDerivative(const Eigen::VectorXd& z) const;
+
 public:
     
 
     /**
      * @brief Tests Layer constructor for correct initialization.
      */
-    void testLayerConstructor();
+    bool testLayerConstructor();
 
     /**
      * @brief Tests Layer forward pass for correct output and activation storage.
      */
-    void testLayerForward();
+    bool testLayerForward();
 
     /**
      * @brief Tests Layer gradient computation.
      */
-    void testLayerGradients();
+    bool testLayerGradients();
 
     /**
      * @brief Tests Layer parameter updates.
      */
-    void testLayerUpdateParameters();
+    bool testLayerUpdateParameters();
+
+    bool testLayerComputeActivationDerivative();
 
 public:
     /**
@@ -95,6 +115,10 @@ public:
      * @brief Tests Network gradient checking to verify L2 regularization.
      */
     void testNetworkGradientChecking();
+
+
+    // New Test for CPU vs GPU Consistency
+    void testComputationContexts();
 
 public:
     /**
@@ -123,5 +147,9 @@ private:
     int total_tests_;                   ///< Total tests run
     Network::NeuronType neuron_type_;            ///< Track chosen neuron type
     std::unique_ptr<Activation> activation_;  ///< Dynamic activation instance
+private:
+    std::unique_ptr<CPUComputationContext> cpuContext; ///< CPU computation context
+    std::unique_ptr<GPUComputationContext> gpuContext; ///< GPU computation context
+    std::vector<ComputationContext*> computeContexts; ///< List of computation contexts
 };
 

@@ -4,6 +4,7 @@
 #define ACTIVATION_HPP
 
 #include <Eigen/Dense>
+#include <cudnn.h>
 
 /**
  * @brief Abstract base class for activation functions.
@@ -32,6 +33,13 @@ public:
      * @return Derivative vector
      */
     virtual Eigen::VectorXd derivative(const Eigen::VectorXd* activations = nullptr, const Eigen::VectorXd* pre_activations = nullptr) const = 0;
+
+    /**
+     * @brief Returns the cuDNN activation mode for GPU computation.
+     * @return cuDNN activation mode
+     * @throws std::runtime_error if the activation is not supported by cuDNN
+     */
+    virtual cudnnActivationMode_t getCudnnActivationMode() const = 0;
 };
 
 

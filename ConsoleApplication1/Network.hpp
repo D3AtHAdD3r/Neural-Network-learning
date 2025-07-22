@@ -4,12 +4,13 @@
 
 #include "Layer.hpp"
 #include "SigmoidActivation.hpp"
+#include "ComputationContext.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <iostream>
-#include <memory>  // For unique_ptr
+#include <memory>  
 
 /**
  * @brief A feedforward neural network with sigmoid activation.
@@ -28,7 +29,9 @@ public:
      * @param lambda L2 regularization parameter (default: 0.0, no regularization)
      * @param loss_type Type of loss function to use (default: MSE)
      */
-    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID);
+    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID, ComputationContext* context = nullptr);
+
+    ~Network(); 
 
     /**
      * @brief Computes the network output for a given input.
@@ -115,6 +118,9 @@ public:
      */
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
 
+    // New overload for training data (target as one-hot vector)
+    std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
+
 private:
     /**
      * @brief Updates weights and biases for a mini-batch and computes gradient norm.
@@ -162,6 +168,8 @@ private:
     LossType loss_type_;                ///< Type of loss function to use
     NeuronType neuron_type_;            ///< Track chosen neuron type
     std::unique_ptr<Activation> activation_;  ///< Dynamic activation instance
+    ComputationContext* context_; // Raw pointer
+    bool owns_context_; // Flag to track ownership
 };
 
 #endif

@@ -21,6 +21,10 @@ public:
         const Eigen::VectorXd& a = activations ? *activations : activate(*pre_activations);  // Use activations if provided, else compute from pre-activations
         return a.cwiseProduct(Eigen::VectorXd::Ones(a.size()) - a);
     }
+
+    cudnnActivationMode_t getCudnnActivationMode() const override {
+        return CUDNN_ACTIVATION_SIGMOID;
+    }
 };
 
 

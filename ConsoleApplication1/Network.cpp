@@ -1,16 +1,23 @@
 ﻿#include "Network.hpp"
+#include "CPUComputationContext.hpp"
 #include <iomanip>
+
 
 /**
  * @brief Constructs a network with specified layer sizes.
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type)
+Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type, ComputationContext* context)
     : 
     sizes(sizes), num_layers(sizes.size()), 
     rng(std::random_device{}()), last_test_loss(0.0), lambda(lambda), 
-    loss_type_(loss_type), neuron_type_(neuron_type) {
+    loss_type_(loss_type), neuron_type_(neuron_type), 
+    context_(context), owns_context_(context == nullptr) {
+
+    if (!context_) {
+        context_ = new CPUComputationContext();
+    }
 
     // Dynamically create activation based on neuron_type
     switch (neuron_type_) {
@@ -22,7 +29,13 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
     }
 
     for (size_t i = 1; i < sizes.size(); ++i) {
-        layers.emplace_back(sizes[i - 1], sizes[i], activation_.get(), static_cast<unsigned int>(rng()));
+        layers.emplace_back(sizes[i - 1], sizes[i], activation_.get(), context_, static_cast<unsigned int>(rng()));
+    }
+}
+
+Network::~Network() {
+    if (owns_context_ && context_) {
+        delete context_;
     }
 }
 
@@ -131,7 +144,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
     double scale = eta / mini_batch.size();
     for (size_t i = 0; i < layers.size(); ++i) {
-        layers[i].update_parameters(weight_grads[i] * scale, bias_grads[i] * scale);
+        layers[i].update_parameters(weight_grads[i], bias_grads[i], scale);
     }
 
     return norm;
@@ -239,6 +252,46 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
     last_test_loss = total_loss; // Cache total loss
     return { correct, total_loss };
 }
+
+
+std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n) {
+    int correct = 0;
+    double total_loss = 0.0;
+
+    double weight_norm = 0.0;
+    for (const auto& layer : layers) {
+        weight_norm += layer.get_weights().squaredNorm();
+    }
+
+    for (const auto& [x, y] : test_data) {
+        Eigen::VectorXd output = feedforward(x);
+        // Convert one-hot target to label by finding the index of the maximum value
+        Eigen::Index predicted;
+        output.maxCoeff(&predicted);
+        Eigen::Index target_label;
+        y.maxCoeff(&target_label);
+        if (predicted == target_label) ++correct;
+
+        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+            Eigen::VectorXd diff = output - y;
+            total_loss += diff.squaredNorm();
+        }
+        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+            for (int i = 0; i < output.size(); ++i) {
+                double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
+                total_loss += -(y(i) * std::log(a) + (1 - y(i)) * std::log(1 - a));
+            }
+        }
+    }
+
+    if (lambda > 0.0 && n > 0) {
+        total_loss += 0.5 * lambda * weight_norm / n;
+    }
+
+    last_test_loss = total_loss;
+    return { correct, total_loss };
+}
+
 
 /**
  * @brief Computes the derivative of the cost function w.r.t. output activations.
