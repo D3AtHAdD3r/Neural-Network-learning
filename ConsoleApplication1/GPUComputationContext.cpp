@@ -247,3 +247,57 @@ void GPUComputationContext::updateParameters(Eigen::MatrixXd& weights, Eigen::Ve
     CHECK_CUDA(cudaFree(d_weight_grads));
     CHECK_CUDA(cudaFree(d_bias_grads));
 }
+
+void GPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixXd>& weight_grads_in, const std::vector<Eigen::VectorXd>& bias_grads_in, std::vector<Eigen::MatrixXd>& weight_grads_out, std::vector<Eigen::VectorXd>& bias_grads_out, double scale)
+{
+    if (weight_grads_in.size() != weight_grads_out.size() || bias_grads_in.size() != bias_grads_out.size()) {
+        throw std::runtime_error("Gradient vector size mismatch in accumulateGradients");
+    }
+
+    for (size_t i = 0; i < weight_grads_in.size(); ++i) {
+        int m = weight_grads_in[i].rows();
+        int n = weight_grads_in[i].cols();
+        int bias_size = bias_grads_in[i].size();
+
+        // Initialize output gradients if empty
+        if (weight_grads_out[i].size() == 0) {
+            weight_grads_out[i].resize(m, n);
+            weight_grads_out[i].setZero();
+        }
+        if (bias_grads_out[i].size() == 0) {
+            bias_grads_out[i].resize(bias_size);
+            bias_grads_out[i].setZero();
+        }
+
+        // Device memory pointers
+        double* d_weight_grads_in, * d_weight_grads_out, * d_bias_grads_in, * d_bias_grads_out;
+
+        // Allocate device memory
+        CHECK_CUDA(cudaMalloc(&d_weight_grads_in, m * n * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_weight_grads_out, m * n * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_bias_grads_in, bias_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_bias_grads_out, bias_size * sizeof(double)));
+
+        // Copy input and output gradients to device
+        CHECK_CUDA(cudaMemcpy(d_weight_grads_in, weight_grads_in[i].data(), m * n * sizeof(double), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_weight_grads_out, weight_grads_out[i].data(), m * n * sizeof(double), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_bias_grads_in, bias_grads_in[i].data(), bias_size * sizeof(double), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_bias_grads_out, bias_grads_out[i].data(), bias_size * sizeof(double), cudaMemcpyHostToDevice));
+
+        // Accumulate: out += scale * in
+        double alpha = scale;
+        CHECK_CUBLAS(cublasDaxpy(cublasHandle, m * n, &alpha, d_weight_grads_in, 1, d_weight_grads_out, 1));
+        CHECK_CUBLAS(cublasDaxpy(cublasHandle, bias_size, &alpha, d_bias_grads_in, 1, d_bias_grads_out, 1));
+
+        // Copy back to host
+        CHECK_CUDA(cudaMemcpy(weight_grads_out[i].data(), d_weight_grads_out, m * n * sizeof(double), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(bias_grads_out[i].data(), d_bias_grads_out, bias_size * sizeof(double), cudaMemcpyDeviceToHost));
+
+        // Free device memory
+        CHECK_CUDA(cudaFree(d_weight_grads_in));
+        CHECK_CUDA(cudaFree(d_weight_grads_out));
+        CHECK_CUDA(cudaFree(d_bias_grads_in));
+        CHECK_CUDA(cudaFree(d_bias_grads_out));
+
+    }
+}

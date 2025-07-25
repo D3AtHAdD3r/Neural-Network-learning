@@ -23,139 +23,57 @@ class Network {
 public:
     enum class LossType { MSE, CROSS_ENTROPY };  // New enum for loss selection
     enum class NeuronType { SIGMOID };  // Start with only sigmoid
-    /**
-     * @brief Constructs a network with specified layer sizes.
-     * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
-     * @param lambda L2 regularization parameter (default: 0.0, no regularization)
-     * @param loss_type Type of loss function to use (default: MSE)
-     */
-    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID, ComputationContext* context = nullptr);
-
+    
+public:
+    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID, ComputationContext* context = nullptr, unsigned int seed = std::random_device{}());
+    
     ~Network(); 
 
-    /**
-     * @brief Computes the network output for a given input.
-     * @param a Input vector
-     * @return Output activations of the final layer
-     */
+public:
     Eigen::VectorXd feedforward(const Eigen::VectorXd& a);
 
-    /**
-     * @brief Trains the network using stochastic gradient descent.
-     * @param training_data Vector of (input, target) pairs
-     * @param epochs Number of training epochs
-     * @param mini_batch_size Size of each mini-batch
-     * @param eta Learning rate
-     * @param test_data Optional test data for evaluation
-     * @param verbose If true, display detailed metrics per epoch
-     */
     void SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         int epochs, int mini_batch_size, double eta,
         const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr,
         bool verbose = true);
 
-    /**
-     * @brief Displays biases for all layers.
-     */
     void display_biases() const;
-
-    /**
-     * @brief Displays weights for all layers.
-     */
     void display_weights() const;
-
-    /**
-     * @brief Displays biases layer-wise with truncation.
-     * @param max_elements Maximum elements to display per layer
-     */
     void display_layer_biases(int max_elements = 10) const;
-
-    /**
-     * @brief Displays weights layer-wise with truncation.
-     * @param max_elements Maximum elements to display per layer
-     */
     void display_layer_weights(int max_elements = 10) const;
-
-    /**
-     * @brief Displays gradients computed by backpropagation for a single example.
-     * @param x Input vector
-     * @param y Target vector
-     * @param n Number of training examples for L2 regularization scaling
-     */
     void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
-    /**
-     * @brief Sets the weights of a specific layer.
-     * @param layer_idx Index of the layer
-     * @param weights New weight matrix
-     */
+public:
+    //setters
     void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
-
-    /**
-     * @brief Sets the biases of a specific layer.
-     * @param layer_idx Index of the layer
-     * @param biases New bias vector
-     */
     void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
+    //getters
+    const std::vector<Layer>& get_layers() const { return layers; }
+
+public:
+    //For unit tests(NeuralNetworkTest)
+    //TODO:  make them private or protected and expose it through friend test classes
+    std::vector<Layer>& get_mutable_layers() { return layers; }
+
 
 public:
     //Temporarily public
-    /**
-     * @brief Computes gradients for a single training example using backpropagation.
-     * @param x Input vector
-     * @param y Target vector
-     * @param n Number of training examples for L2 regularization scaling
-     * @return Pair of bias gradients and weight gradients for each layer
-     */
+ 
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
-    /**
-     * @brief Evaluates the network on test data and computes loss.
-     * @param test_data Vector of (input, label) pairs
-     * @param n Number of training examples for L2 regularization scaling
-     * @return Pair of (correct predictions, total MSE loss)
-     */
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
 
     // New overload for training data (target as one-hot vector)
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
 
-private:
-    /**
-     * @brief Updates weights and biases for a mini-batch and computes gradient norm.
-     * @param mini_batch Vector of (input, target) pairs
-     * @param eta Learning rate
-     * param n Number of training examples for L2 regularization scaling
-     * @return L2 norm of gradients for the mini-batch
-     */
     double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
 
-    /**
-     * @brief Computes the derivative of the cost function w.r.t. output activations.
-     * @param output_activations Output activations of the final layer
-     * @param y Target vector
-     * @return Cost derivative
-     */
+private:
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 
-public:
-    //getters
-    const std::vector<Layer>& get_layers() const { return layers; }
 private:
-    /**
-     * @brief Computes the mean squared error loss over test data.
-     * @param test_data Vector of (input, label) pairs
-     * @return Average MSE loss
-     */
     double compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
-
-    /**
-     * @brief Computes the L2 norm of gradients for a mini-batch.
-     * @param mini_batch Vector of (input, target) pairs
-     * @param n Number of training examples for L2 regularization scaling
-     * @return L2 norm of gradients
-     */
     double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:

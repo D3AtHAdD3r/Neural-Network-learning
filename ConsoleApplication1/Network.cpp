@@ -1,5 +1,6 @@
 ﻿#include "Network.hpp"
 #include "CPUComputationContext.hpp"
+#include"utils.h"
 #include <iomanip>
 
 
@@ -8,10 +9,10 @@
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type, ComputationContext* context)
+Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type, ComputationContext* context, unsigned int seed)
     : 
     sizes(sizes), num_layers(sizes.size()), 
-    rng(std::random_device{}()), last_test_loss(0.0), lambda(lambda), 
+    rng(seed), last_test_loss(0.0), lambda(lambda), 
     loss_type_(loss_type), neuron_type_(neuron_type), 
     context_(context), owns_context_(context == nullptr) {
 
@@ -110,13 +111,6 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     }
 }
 
-/**
- * @brief Updates weights and biases for a mini-batch and computes gradient norm.
- * @param mini_batch Vector of (input, target) pairs
- * @param eta Learning rate
- * @param n Number of training examples for L2 scaling
- * @return L2 norm of gradients for the mini-batch
- */
 double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
     if (mini_batch.empty()) return 0.0;
 
@@ -129,10 +123,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
     for (const auto& [x, y] : mini_batch) {
         auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-        for (size_t i = 0; i < layers.size(); ++i) {
-            bias_grads[i] += delta_nabla_b[i];
-            weight_grads[i] += delta_nabla_w[i];
-        }
+        context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
     }
 
     double norm = 0.0;
@@ -234,6 +225,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
         target(y) = 1.0; // One-hot encoding for target label
         
+        //TODO: put a switch here
         if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
             Eigen::VectorXd diff = output - target;
             total_loss += diff.squaredNorm();

@@ -37,3 +37,20 @@ void CPUComputationContext::updateParameters(Eigen::MatrixXd& weights, Eigen::Ve
 	weights -= weight_grads * scale;
 	biases -= bias_grads * scale;
 }
+
+void CPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixXd>& weight_grads_in, const std::vector<Eigen::VectorXd>& bias_grads_in, std::vector<Eigen::MatrixXd>& weight_grads_out, std::vector<Eigen::VectorXd>& bias_grads_out, double scale)
+{
+	if (weight_grads_in.size() != weight_grads_out.size() || bias_grads_in.size() != bias_grads_out.size()) {
+		throw std::runtime_error("Gradient vector size mismatch in accumulateGradients");
+	}
+	for (size_t i = 0; i < weight_grads_in.size(); ++i) {
+		if (weight_grads_out[i].size() == 0) {
+			weight_grads_out[i] = Eigen::MatrixXd::Zero(weight_grads_in[i].rows(), weight_grads_in[i].cols());
+		}
+		if (bias_grads_out[i].size() == 0) {
+			bias_grads_out[i] = Eigen::VectorXd::Zero(bias_grads_in[i].size());
+		}
+		weight_grads_out[i] += scale * weight_grads_in[i];
+		bias_grads_out[i] += scale * bias_grads_in[i];
+	}
+}

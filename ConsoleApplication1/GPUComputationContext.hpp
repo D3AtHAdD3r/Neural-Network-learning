@@ -76,6 +76,12 @@ public:
         Eigen::VectorXd& biases,
         const Eigen::MatrixXd& weight_grads,
         const Eigen::VectorXd& bias_grads, double scale) override;
+
+    void accumulateGradients(const std::vector<Eigen::MatrixXd>& weight_grads_in,
+        const std::vector<Eigen::VectorXd>& bias_grads_in,
+        std::vector<Eigen::MatrixXd>& weight_grads_out,
+        std::vector<Eigen::VectorXd>& bias_grads_out,
+        double scale) override;
 };
 
 // Optional: Factory function to create an instance

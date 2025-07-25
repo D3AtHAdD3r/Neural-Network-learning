@@ -38,6 +38,15 @@ public:
         Eigen::VectorXd& biases,
         const Eigen::MatrixXd& weight_grads,
         const Eigen::VectorXd& bias_grads, double scale) = 0;
+
+    // New method for GPU gradient accumulation
+    // Accumulates gradients into weight_grads and bias_grads: weight_grads += alpha * delta_nabla_w.
+    // Typically, alpha = 1.0 to sum raw gradients; scaling by eta / mini_batch.size() is handled in update_parameters.
+    virtual void accumulateGradients(const std::vector<Eigen::MatrixXd>& weight_grads_in,
+        const std::vector<Eigen::VectorXd>& bias_grads_in,
+        std::vector<Eigen::MatrixXd>& weight_grads_out,
+        std::vector<Eigen::VectorXd>& bias_grads_out,
+        double scale) = 0;
 };
 
 

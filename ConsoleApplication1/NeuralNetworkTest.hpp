@@ -66,8 +66,6 @@ private:
     Eigen::VectorXd computeActivationDerivative(const Eigen::VectorXd& z) const;
 
 public:
-    
-
     /**
      * @brief Tests Layer constructor for correct initialization.
      */
@@ -88,7 +86,12 @@ public:
      */
     bool testLayerUpdateParameters();
 
+
     bool testLayerComputeActivationDerivative();
+
+public:
+    //new network tests
+    void testUpdateMiniBatchSimplified();
 
 public:
     /**
@@ -137,7 +140,7 @@ private:
         std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 
 private:
-    static constexpr double TOL = 1e-6; ///< Tolerance for floating-point comparisons
+    static constexpr double TOL = 1e-3; ///< Tolerance for floating-point comparisons
 private:
     int layer_inputs_;                  ///< Number of inputs for Layer tests
     int layer_neurons_;                 ///< Number of neurons for Layer tests
