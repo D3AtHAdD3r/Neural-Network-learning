@@ -41,6 +41,34 @@ Eigen::VectorXd GPUComputationContext::computeLinear(const Eigen::MatrixXd& weig
     return z;
 }
 
+Eigen::MatrixXd GPUComputationContext::computeWeightGradient(const Eigen::VectorXd& delta, const Eigen::VectorXd& activation)
+{
+    int m = delta.size();
+    int n = activation.size();
+    Eigen::MatrixXd result(m, n);
+
+    double* d_delta, * d_activation, * d_result;
+    cudaMalloc(&d_delta, m * sizeof(double));
+    cudaMalloc(&d_activation, n * sizeof(double));
+    cudaMalloc(&d_result, m * n * sizeof(double));
+
+    cudaMemcpy(d_delta, delta.data(), m * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_activation, activation.data(), n * sizeof(double), cudaMemcpyHostToDevice);
+
+    double alpha = 1.0;
+    cublasDger(cublasHandle, m, n, &alpha, d_delta, 1, d_activation, 1, d_result, m);
+
+    cudaMemcpy(result.data(), d_result, m * n * sizeof(double), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_delta);
+    cudaFree(d_activation);
+    cudaFree(d_result);
+
+    return result;
+}
+
+
+
 Eigen::VectorXd GPUComputationContext::applyActivation(const Eigen::VectorXd& z, const Activation* activation) {
     if (!activation) {
         throw std::runtime_error("Null activation pointer in applyActivation");

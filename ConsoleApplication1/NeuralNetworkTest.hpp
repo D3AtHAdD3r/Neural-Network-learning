@@ -93,6 +93,8 @@ public:
     //new network tests
     void testUpdateMiniBatchSimplified();
 
+    void TestBackpropGradientComputation();
+
 public:
     /**
      * @brief Tests Network constructor.
@@ -129,6 +131,9 @@ public:
      * @return True if all tests passed, false otherwise
      */
     bool runAllTests();
+
+public:
+    void doStuff();
 
 private:
     /**

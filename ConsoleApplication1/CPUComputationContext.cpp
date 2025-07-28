@@ -1,10 +1,19 @@
 #include "CPUComputationContext.hpp"
+#include<iostream>
+#include"utils.h"
 
 Eigen::VectorXd CPUComputationContext::computeLinear(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
 {
 	// Perform matrix-vector multiplication followed by vector addition
 	return weights * input + biases;
 }
+
+Eigen::MatrixXd CPUComputationContext::computeWeightGradient(const Eigen::VectorXd& delta, const Eigen::VectorXd& activation)
+{
+	// Compute outer product: delta (mx1) * activation.transpose() (1xn) = mxn matrix
+	return delta * activation.transpose();
+}
+
 
 Eigen::VectorXd CPUComputationContext::applyActivation(const Eigen::VectorXd& z, const Activation* activation)
 {

@@ -55,6 +55,10 @@ public:
         const Eigen::VectorXd& input,
         const Eigen::VectorXd& biases) override;
 
+    // New method for computing weight gradients (outer product)
+    Eigen::MatrixXd computeWeightGradient(const Eigen::VectorXd& delta,
+        const Eigen::VectorXd& activation) override;
+
     // Apply activation function (assumes sigmoid for now using cuDNN)
     Eigen::VectorXd applyActivation(const Eigen::VectorXd& z,
         const Activation* activation) override;

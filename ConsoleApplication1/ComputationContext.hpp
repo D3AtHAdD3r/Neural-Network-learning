@@ -17,6 +17,10 @@ public:
         const Eigen::VectorXd& input,
         const Eigen::VectorXd& biases) = 0;
 
+    // New method for computing weight gradients (outer product)
+    virtual Eigen::MatrixXd computeWeightGradient(const Eigen::VectorXd& delta, 
+        const Eigen::VectorXd& activation) = 0;
+
     // Apply the activation function to the pre-activation values
     virtual Eigen::VectorXd applyActivation(const Eigen::VectorXd& z,
         const Activation* activation) = 0;
