@@ -48,21 +48,22 @@ Eigen::MatrixXd GPUComputationContext::computeWeightGradient(const Eigen::Vector
     Eigen::MatrixXd result(m, n);
 
     double* d_delta, * d_activation, * d_result;
-    cudaMalloc(&d_delta, m * sizeof(double));
-    cudaMalloc(&d_activation, n * sizeof(double));
-    cudaMalloc(&d_result, m * n * sizeof(double));
+    CHECK_CUDA(cudaMalloc(&d_delta, m * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_activation, n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_result, m * n * sizeof(double)));
 
-    cudaMemcpy(d_delta, delta.data(), m * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_activation, activation.data(), n * sizeof(double), cudaMemcpyHostToDevice);
+    CHECK_CUDA(cudaMemcpy(d_delta, delta.data(), m * sizeof(double), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_activation, activation.data(), n * sizeof(double), cudaMemcpyHostToDevice));
 
+    CHECK_CUDA(cudaMemset(d_result, 0, m * n * sizeof(double))); // Ensure clean slate
     double alpha = 1.0;
-    cublasDger(cublasHandle, m, n, &alpha, d_delta, 1, d_activation, 1, d_result, m);
+    CHECK_CUBLAS(cublasDger(cublasHandle, m, n, &alpha, d_delta, 1, d_activation, 1, d_result, m));
 
-    cudaMemcpy(result.data(), d_result, m * n * sizeof(double), cudaMemcpyDeviceToHost);
+    CHECK_CUDA(cudaMemcpy(result.data(), d_result, m * n * sizeof(double), cudaMemcpyDeviceToHost));
 
-    cudaFree(d_delta);
-    cudaFree(d_activation);
-    cudaFree(d_result);
+    CHECK_CUDA(cudaFree(d_delta));
+    CHECK_CUDA(cudaFree(d_activation));
+    CHECK_CUDA(cudaFree(d_result));
 
     return result;
 }

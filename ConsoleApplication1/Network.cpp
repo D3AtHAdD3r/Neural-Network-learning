@@ -124,29 +124,8 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
     for (const auto& [x, y] : mini_batch) {
         auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-
-        // Test the gradients here
-        // -------test code-----//
-
-        std::cout << "grads for input: " << std::endl;
-        ShowGrads(delta_nabla_b, delta_nabla_w, 100, 100, 100);
-
-        /*for (int i = 0; i < delta_nabla_w.size(); ++i) {
-            displayMatrixXd(delta_nabla_w[i]);
-        }*/
-
-        std::cout << "-----------------\n";
-
-        //----------------------//
         context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
     }
-
-    //-------test code----------//
-    /*std::cout << "\n Grads : ------" << std::endl;
-    for (int i = 0; i < weight_grads.size(); ++i) {
-        displayMatrixXd(weight_grads[i]);
-    }*/
-    //-------test code end----------//
 
     double norm = 0.0;
     for (size_t i = 0; i < layers.size(); ++i) {
@@ -200,7 +179,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         //delta = cost_derivative(activations.back(), y).cwiseProduct(activation_->derivative(&activations.back(), &zs.back()));
         Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
         Eigen::VectorXd activation_deriv = context_->computeActivationDerivative(activations.back(), zs.back(), activation_.get());
-        delta = cost_deriv.cwiseProduct(activation_deriv); // Element-wise multiplication
+        delta = cost_deriv.cwiseProduct(activation_deriv); // Element-wise multiplication       
     }
     else {
         throw std::runtime_error("Unsupported neuron type or loss function combination in backprop");
@@ -210,26 +189,6 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     nabla_b.back() = delta;
     //nabla_w.back() = delta * activations[activations.size() - 2].transpose();
     nabla_w.back() = context_->computeWeightGradient(delta, activations[activations.size() - 2]);
-
-    /*std::cout << "\n------nabla_w.back(): ------" << std::endl;
-    displayMatrixXd(nabla_w.back());*/
-
-    //-------test code-----------//
-
-    /*std::cout << "\n------nabla_w.back()-CPU with new computation: ------" << std::endl;
-    nabla_w.back() = context_->computeWeightGradient(delta, activations[activations.size() - 2]);
-    displayMatrixXd(nabla_w.back());*/
-
-    /*std::cout << "\n------nabla_w.back()-CPU with old computation: ------" << std::endl;
-    nabla_w.back() = delta * activations[activations.size() - 2].transpose();
-    displayMatrixXd(nabla_w.back());*/
-
-    /*GPUComputationContext gpuCompute;
-    std::cout << "\n------nabla_w.back()-GPU with GPUComputationContext: ------" << std::endl;
-    nabla_w.back() = gpuCompute.computeWeightGradient(delta, activations[activations.size() - 2]);
-    displayMatrixXd(nabla_w.back());*/
-
-    //-------test code end------------//
 
     if (lambda > 0.0 && n > 0) {
         nabla_w.back() += (lambda / n) * layers[layers.size() - 1].get_weights(); // Scaled L2

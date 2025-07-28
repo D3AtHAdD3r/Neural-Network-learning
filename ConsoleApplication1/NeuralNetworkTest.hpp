@@ -91,9 +91,9 @@ public:
 
 public:
     //new network tests
-    void testUpdateMiniBatchSimplified();
+    bool testUpdateMiniBatchSimplified();
 
-    void TestBackpropGradientComputation();
+    bool testBackpropGradientComputation();
 
 public:
     /**
