@@ -60,9 +60,6 @@ int main() {
     std::chrono::duration<double> gpu_duration = gpu_end - gpu_start;
     std::cout << "GPU training completed in " << gpu_duration.count() << " seconds.\n";
 
-    
-
-
     return 0;
 }
 

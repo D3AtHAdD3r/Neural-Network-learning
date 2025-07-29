@@ -283,6 +283,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         y.maxCoeff(&target_label);
         if (predicted == target_label) ++correct;
 
+        //TODO: add a switch here
         if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
             Eigen::VectorXd diff = output - y;
             total_loss += diff.squaredNorm();
