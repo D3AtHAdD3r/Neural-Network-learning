@@ -51,6 +51,12 @@ public:
         std::vector<Eigen::MatrixXd>& weight_grads_out,
         std::vector<Eigen::VectorXd>& bias_grads_out,
         double scale) = 0;
+
+    virtual double compute_squared_norm(const Eigen::MatrixXd& matrix) = 0;
+
+    virtual double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) = 0;
+
+    virtual double compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) = 0;
 };
 
 

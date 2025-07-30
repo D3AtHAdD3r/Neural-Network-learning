@@ -232,9 +232,8 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
     double weight_norm = 0.0;
     for (const auto& layer : layers) {
-        weight_norm += layer.get_weights().squaredNorm();
+        weight_norm += context_->compute_squared_norm(layer.get_weights());
     }
-
 
     for (const auto& [x, y] : test_data) {
         Eigen::VectorXd output = feedforward(x);
@@ -246,14 +245,10 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         
         //TODO: put a switch here
         if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-            Eigen::VectorXd diff = output - target;
-            total_loss += diff.squaredNorm();
+            total_loss += context_->compute_mse_loss(output, target);
         }
-        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-            for (int i = 0; i < output.size(); ++i) {
-                double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
-                total_loss += -(target(i) * std::log(a) + (1 - target(i)) * std::log(1 - a));
-            }
+        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {       
+            total_loss += context_->compute_cross_entropy_loss(output, target);
         }
     }
     if (lambda > 0.0 && n > 0) {
@@ -271,7 +266,8 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
     double weight_norm = 0.0;
     for (const auto& layer : layers) {
-        weight_norm += layer.get_weights().squaredNorm();
+        //weight_norm += layer.get_weights().squaredNorm();
+        weight_norm += context_->compute_squared_norm(layer.get_weights());
     }
 
     for (const auto& [x, y] : test_data) {
@@ -285,14 +281,10 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
         //TODO: add a switch here
         if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-            Eigen::VectorXd diff = output - y;
-            total_loss += diff.squaredNorm();
+            total_loss += context_->compute_mse_loss(output, y);
         }
         else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-            for (int i = 0; i < output.size(); ++i) {
-                double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
-                total_loss += -(y(i) * std::log(a) + (1 - y(i)) * std::log(1 - a));
-            }
+            total_loss += context_->compute_cross_entropy_loss(output, y);
         }
     }
 

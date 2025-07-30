@@ -95,6 +95,8 @@ public:
 
     bool testBackpropGradientComputation();
 
+    bool testEvaluate();
+
 public:
     /**
      * @brief Tests Network constructor.

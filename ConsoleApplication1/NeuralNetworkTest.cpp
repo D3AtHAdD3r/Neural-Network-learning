@@ -1344,6 +1344,7 @@ void NeuralNetworkTest::testNetworkGradientChecking()
     std::cout << "Passed" << std::endl;
 }
 
+
 void NeuralNetworkTest::testComputationContexts()
 {
     std::cout << "Running testComputationContexts... ";
@@ -1392,6 +1393,80 @@ void NeuralNetworkTest::testComputationContexts()
     std::cout << "Passed" << std::endl;
 }
 
+
+bool NeuralNetworkTest::testEvaluate() {
+    std::cout << "----- Running testEvaluateCrossEntropy... -----\n";
+    ++total_tests_;
+    bool all_passed = true;
+    std::string contextName;
+    std::string errorMsg;
+
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> test_data = {
+        {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
+        {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)}
+    };
+    std::vector<int> sizes = { 2, 3, 2 };
+    unsigned int seed = 42;
+    size_t n = 2;
+
+    double cpu_loss, gpu_loss;
+    int cpu_correct, gpu_correct;
+
+    for (auto context : computeContexts) {
+        if (dynamic_cast<CPUComputationContext*>(context)) {
+            contextName = "CPUContext";
+        }
+        else if (dynamic_cast<GPUComputationContext*>(context)) {
+            contextName = "GPUContext";
+        }
+        else {
+            throw std::runtime_error("Unknown computation context");
+        }
+
+        std::cout << "Test: " << contextName << "\n";
+        Network net(sizes, 0.0, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, context, seed);
+        auto [correct, loss] = net.evaluate(test_data, n);
+
+        if (contextName == "CPUContext") {
+            cpu_correct = correct;
+            cpu_loss = loss;
+        }
+        else {
+            gpu_correct = correct;
+            gpu_loss = loss;
+        }
+
+        std::cout << std::fixed << std::setprecision(6);
+        std::cout << "Correct: " << correct << "/" << test_data.size() << "\n";
+        std::cout << "Loss: " << loss << "\n";
+        std::cout << "Test: " << contextName << " Passed\n\n";
+    }
+
+    std::cout << "Test: Compare CPU and GPU results\n";
+    bool passed = true;
+    errorMsg = "CPU and GPU correct predictions differ";
+    if (cpu_correct != gpu_correct) {
+        passed = false;
+        std::cerr << errorMsg << ": CPU=" << cpu_correct << ", GPU=" << gpu_correct << "\n";
+    }
+    errorMsg = "CPU and GPU losses differ";
+    if (std::abs(cpu_loss - gpu_loss) > TOL) {
+        passed = false;
+        std::cerr << errorMsg << ": CPU=" << cpu_loss << ", GPU=" << gpu_loss << " (diff=" << std::abs(cpu_loss - gpu_loss) << ")\n";
+    }
+
+    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
+
+    if (passed) {
+        ++passed_tests_;
+        std::cout << "----- testEvaluateCrossEntropy Passed -----\n\n";
+    }
+    else {
+        std::cout << "----- testEvaluateCrossEntropy Failed -----\n\n";
+    }
+    return passed;
+}
+
 bool NeuralNetworkTest::runAllTests()
 {
     passed_tests_ = 0;
@@ -1408,7 +1483,8 @@ bool NeuralNetworkTest::runAllTests()
     //testNetworkGradientChecking();
     //testComputationContexts();
     //testUpdateMiniBatchSimplified(); 
-    testBackpropGradientComputation();
+    //testBackpropGradientComputation();
+    testEvaluate();
     //doStuff();
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;

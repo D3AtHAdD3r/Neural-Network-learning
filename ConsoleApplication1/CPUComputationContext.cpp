@@ -63,3 +63,25 @@ void CPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixX
 		bias_grads_out[i] += scale * bias_grads_in[i];
 	}
 }
+
+double CPUComputationContext::compute_squared_norm(const Eigen::MatrixXd& matrix)
+{
+	return matrix.squaredNorm();
+}
+
+double CPUComputationContext::compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
+{
+	Eigen::VectorXd diff = output - target;
+	return diff.squaredNorm();
+}
+
+double CPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
+{
+	double loss = 0.0;
+	for (int i = 0; i < output.size(); ++i) {
+		double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
+		loss += -(target(i) * std::log(a) + (1 - target(i)) * std::log(1 - a));
+	}
+	return loss;
+}
+

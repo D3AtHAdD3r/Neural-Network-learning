@@ -32,6 +32,8 @@
     } \
 }
 
+
+
 // GPU implementation of ComputationContext using CUDA, cuBLAS, and cuDNN
 class GPUComputationContext : public ComputationContext {
 private:
@@ -86,6 +88,12 @@ public:
         std::vector<Eigen::MatrixXd>& weight_grads_out,
         std::vector<Eigen::VectorXd>& bias_grads_out,
         double scale) override;
+
+    double compute_squared_norm(const Eigen::MatrixXd& matrix) override;
+
+    double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) override;
+
+    double compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) override;
 };
 
 // Optional: Factory function to create an instance

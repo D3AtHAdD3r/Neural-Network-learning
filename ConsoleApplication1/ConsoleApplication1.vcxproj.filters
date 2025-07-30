@@ -36,9 +36,6 @@
     <ClCompile Include="CPUComputationContext.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="GPUComputationContext.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mnistLoader.h">
@@ -80,5 +77,11 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="test_cuda.cu" />
+    <CudaCompile Include="test_cuda.cpp">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
+    <CudaCompile Include="GPUComputationContext.cpp">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

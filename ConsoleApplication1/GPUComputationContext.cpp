@@ -1,4 +1,41 @@
+#ifdef __INTELLISENSE__
+#define CUDA_KERNEL_NODE_PARAMS
+#define __CUDACC__
+#endif
+
 #include"GPUComputationContext.hpp"
+
+ //CUDA kernel for cross-entropy loss
+__global__ void crossEntropyLossKernel(const double* output, const double* target, double* loss, int n)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        double a = max(1e-15, min(1.0 - 1e-15, output[idx]));
+        loss[idx] = -(target[idx] * log(a) + (1.0 - target[idx]) * log(1.0 - a));
+    }
+}
+
+// CUDA kernel for sum reduction
+__global__ void sumReductionKernel(const double* input, double* output, int n)
+{
+    extern __shared__ double sdata[];
+    unsigned int tid = threadIdx.x;
+    unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    sdata[tid] = (idx < n) ? input[idx] : 0.0;
+    __syncthreads();
+
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0];
+    }
+}
 
 Eigen::VectorXd GPUComputationContext::computeLinear(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
 {
@@ -329,4 +366,90 @@ void GPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixX
         CHECK_CUDA(cudaFree(d_bias_grads_out));
 
     }
+}
+
+double GPUComputationContext::compute_squared_norm(const Eigen::MatrixXd& matrix) {
+    int m = matrix.rows();
+    int n = matrix.cols();
+    double* d_matrix;
+    CHECK_CUDA(cudaMalloc(&d_matrix, m * n * sizeof(double)));
+    CHECK_CUDA(cudaMemcpy(d_matrix, matrix.data(), m * n * sizeof(double), cudaMemcpyHostToDevice));
+
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, m * n, d_matrix, 1, &norm));
+
+    CHECK_CUDA(cudaFree(d_matrix));
+    return norm * norm;
+}
+
+double GPUComputationContext::compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) {
+    int n = output.size();
+    if (n != target.size()) {
+        throw std::runtime_error("Mismatched sizes in compute_mse_loss");
+    }
+
+    double* d_output, * d_target, * d_diff;
+    CHECK_CUDA(cudaMalloc(&d_output, n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_target, n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_diff, n * sizeof(double)));
+
+    CHECK_CUDA(cudaMemcpy(d_output, output.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_target, target.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+
+    // Compute diff = output - target
+    double alpha = -1.0;
+    CHECK_CUDA(cudaMemcpy(d_diff, d_output, n * sizeof(double), cudaMemcpyDeviceToDevice));
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, n, &alpha, d_target, 1, d_diff, 1));
+
+    // Compute squared norm
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, n, d_diff, 1, &norm));
+
+    CHECK_CUDA(cudaFree(d_output));
+    CHECK_CUDA(cudaFree(d_target));
+    CHECK_CUDA(cudaFree(d_diff));
+
+    return norm * norm;
+}
+
+
+double GPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) {
+    int n = output.size();
+    if (n != target.size()) {
+        throw std::runtime_error("Mismatched sizes in compute_cross_entropy_loss");
+    }
+
+    double* d_output, * d_target, * d_loss, * d_sum;
+    CHECK_CUDA(cudaMalloc(&d_output, n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_target, n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_loss, n * sizeof(double)));
+    int num_blocks = (n + 255) / 256;
+    CHECK_CUDA(cudaMalloc(&d_sum, num_blocks * sizeof(double)));
+
+    CHECK_CUDA(cudaMemcpy(d_output, output.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_target, target.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+
+    // Compute element-wise cross-entropy loss
+    crossEntropyLossKernel << <num_blocks, 256 >> > (d_output, d_target, d_loss, n);
+    CHECK_CUDA(cudaGetLastError());
+
+    // Sum the losses
+    sumReductionKernel << <num_blocks, 256, 256 * sizeof(double) >> > (d_loss, d_sum, n);
+    CHECK_CUDA(cudaGetLastError());
+
+    // Copy partial sums to host and complete reduction
+    std::vector<double> partial_sums(num_blocks);
+    CHECK_CUDA(cudaMemcpy(partial_sums.data(), d_sum, num_blocks * sizeof(double), cudaMemcpyDeviceToHost));
+
+    double total_loss = 0.0;
+    for (double sum : partial_sums) {
+        total_loss += sum;
+    }
+
+    CHECK_CUDA(cudaFree(d_output));
+    CHECK_CUDA(cudaFree(d_target));
+    CHECK_CUDA(cudaFree(d_loss));
+    CHECK_CUDA(cudaFree(d_sum));
+
+    return total_loss;
 }

@@ -32,8 +32,8 @@ int main() {
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
     // Load smaller dataset for testing
-    auto training_data = load_mnist_training(train_images, train_labels, 5000);
-    auto test_data = load_mnist_test(test_images, test_labels, 1000);
+    auto training_data = load_mnist_training(train_images, train_labels, 15000);
+    auto test_data = load_mnist_test(test_images, test_labels, 3000);
 
     // Create CPU and GPU computation contexts
     CPUComputationContext cpuContext;
@@ -99,7 +99,7 @@ int main_ww() {
 
 
 
-int main_hy() {
+int main_dfd() {
 
     // Default parameters
     NeuralNetworkTest tester;
