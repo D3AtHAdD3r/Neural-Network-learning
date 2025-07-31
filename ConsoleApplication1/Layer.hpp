@@ -30,6 +30,11 @@ private:
 	bool has_valid_activations_;        ///< Tracks if activations are valid
 	const Activation* activation_;      ///< Pointer to activation function (owned externally)
 	ComputationContext* context_;       ///< Computation context for operations
+	double* d_weights_;                 ///< GPU pointer for weights
+	double* d_biases_;                  ///< GPU pointer for biases
+	double* d_input_;
+	double* d_pre_activations_;
+	double* d_activations_;
 
 public:
 	/**
@@ -40,6 +45,11 @@ public:
 	 * @param seed Random seed for weight/bias initialization
 	 */
 	Layer(int num_inputs, int num_neurons, const Activation* activation, ComputationContext* context, unsigned int seed = 42);
+
+	/**
+	 * @brief Destructor to free GPU memory.
+	 */
+	~Layer();
 
 	/**
 	 * @brief Computes the forward pass, producing activations for the input.
@@ -96,6 +106,18 @@ public:
 	 * @return Reference to biases vector
 	 */
 	const Eigen::VectorXd& get_biases() const { return biases_; };
+
+	/**
+	 * @brief Gets the GPU weight pointer.
+	 * @return Pointer to weights on GPU
+	 */
+	double* get_d_weights() const { return d_weights_; }
+
+	/**
+	 * @brief Gets the GPU bias pointer.
+	 * @return Pointer to biases on GPU
+	 */
+	double* get_d_biases() const { return d_biases_; }
 
 	/**
 	 * @brief Gets the number of neurons.

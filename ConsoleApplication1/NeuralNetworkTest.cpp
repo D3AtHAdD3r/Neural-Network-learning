@@ -1473,7 +1473,7 @@ bool NeuralNetworkTest::runAllTests()
     total_tests_ = 0;
     //testLayerComputeActivationDerivative();
     //testLayerConstructor();
-    //testLayerForward();
+    testLayerForward();
     //testLayerGradients();
     //testLayerUpdateParameters();
     //testNetworkConstructor();
@@ -1484,7 +1484,7 @@ bool NeuralNetworkTest::runAllTests()
     //testComputationContexts();
     //testUpdateMiniBatchSimplified(); 
     //testBackpropGradientComputation();
-    testEvaluate();
+    //testEvaluate();
     //doStuff();
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;

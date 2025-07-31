@@ -453,3 +453,78 @@ double GPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& 
 
     return total_loss;
 }
+
+void GPUComputationContext::allocate_weights(double** d_weights, int rows, int cols) {
+    CHECK_CUDA(cudaMalloc(d_weights, rows * cols * sizeof(double)));
+}
+
+void GPUComputationContext::allocate_biases(double** d_biases, int size) {
+    CHECK_CUDA(cudaMalloc(d_biases, size * sizeof(double)));
+}
+
+void GPUComputationContext::copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) {
+    CHECK_CUDA(cudaMemcpy(d_weights, weights.data(), weights.rows() * weights.cols() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUComputationContext::copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) {
+    CHECK_CUDA(cudaMemcpy(d_biases, biases.data(), biases.size() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUComputationContext::free_weights(double* d_weights) {
+    if (d_weights) {
+        CHECK_CUDA(cudaFree(d_weights));
+    }
+}
+
+void GPUComputationContext::free_biases(double* d_biases) {
+    if (d_biases) {
+        CHECK_CUDA(cudaFree(d_biases));
+    }
+}
+
+
+void GPUComputationContext::allocate_vector(double** d_vector, int size) {
+    CHECK_CUDA(cudaMalloc(d_vector, size * sizeof(double)));
+}
+
+void GPUComputationContext::free_vector(double* d_vector) {
+    if (d_vector) {
+        CHECK_CUDA(cudaFree(d_vector));
+    }
+}
+
+void GPUComputationContext::copy_to_device(double* d_vector, const Eigen::VectorXd& vector) {
+    CHECK_CUDA(cudaMemcpy(d_vector, vector.data(), vector.size() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) {
+    vector.resize(size);
+    CHECK_CUDA(cudaMemcpy(vector.data(), d_vector, size * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
+    double alpha = 1.0, beta = 0.0;
+
+    //CHECK_CUDA(cudaMemset(d_z, 0, m * sizeof(double))); // Ensure clean slate
+
+    CHECK_CUBLAS(cublasDgemv(cublasHandle, CUBLAS_OP_N, m, n, 
+        &alpha, d_weights, m, 
+        d_input, 1, &beta, d_z, 1));
+    alpha = 1.0;
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, m, &alpha, d_biases, 1, d_z, 1));
+}
+
+
+void GPUComputationContext::applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) {
+    cudnnActivationMode_t mode = activation->getCudnnActivationMode();
+    cudnnTensorDescriptor_t tensorDesc;
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&tensorDesc));
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(tensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_DOUBLE, 1, 1, n, 1));
+    cudnnActivationDescriptor_t activationDesc;
+    CHECK_CUDNN(cudnnCreateActivationDescriptor(&activationDesc));
+    CHECK_CUDNN(cudnnSetActivationDescriptor(activationDesc, mode, CUDNN_NOT_PROPAGATE_NAN, 0.0));
+    double alpha = 1.0, beta = 0.0;
+    CHECK_CUDNN(cudnnActivationForward(cudnnHandle, activationDesc, &alpha, tensorDesc, d_z, &beta, tensorDesc, d_a));
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(tensorDesc));
+    CHECK_CUDNN(cudnnDestroyActivationDescriptor(activationDesc));
+}

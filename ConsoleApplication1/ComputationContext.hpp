@@ -57,7 +57,23 @@ public:
     virtual double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) = 0;
 
     virtual double compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) = 0;
-};
+
+    // Memory management for GPU
+    virtual void allocate_weights(double** d_weights, int rows, int cols) = 0;
+    virtual void allocate_biases(double** d_biases, int size) = 0;
+    virtual void copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) = 0;
+    virtual void copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) = 0;
+    virtual void free_weights(double* d_weights) = 0;
+    virtual void free_biases(double* d_biases) = 0;
+
+    //methods to support GPU memory allocation and operations.
+    virtual void allocate_vector(double** d_vector, int size) = 0;
+    virtual void free_vector(double* d_vector) = 0;
+    virtual void copy_to_device(double* d_vector, const Eigen::VectorXd& vector) = 0;
+    virtual void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) = 0;
+    virtual void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) = 0;
+    virtual void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) = 0;
+}; 
 
 
 #endif // COMPUTATION_CONTEXT_HPP

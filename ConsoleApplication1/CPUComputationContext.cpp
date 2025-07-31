@@ -85,3 +85,50 @@ double CPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& 
 	return loss;
 }
 
+void CPUComputationContext::allocate_weights(double** d_weights, int rows, int cols) {
+	*d_weights = nullptr;
+}
+
+void CPUComputationContext::allocate_biases(double** d_biases, int size) {
+	*d_biases = nullptr;
+}
+
+void CPUComputationContext::copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) {
+	// No-op for CPU
+}
+
+void CPUComputationContext::copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) {
+	// No-op for CPU
+}
+
+void CPUComputationContext::free_weights(double* d_weights) {
+	// No-op for CPU
+}
+
+void CPUComputationContext::free_biases(double* d_biases) {
+	// No
+}
+
+void CPUComputationContext::allocate_vector(double** d_vector, int size) {
+	*d_vector = nullptr;
+}
+
+void CPUComputationContext::free_vector(double* d_vector) {
+	// No-op
+}
+
+void CPUComputationContext::copy_to_device(double* d_vector, const Eigen::VectorXd& vector) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
+void CPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
+void CPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
+void CPUComputationContext::applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}

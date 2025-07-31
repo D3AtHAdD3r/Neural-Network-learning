@@ -94,6 +94,22 @@ public:
     double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) override;
 
     double compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) override;
+
+    // Memory management for GPU
+    void allocate_weights(double** d_weights, int rows, int cols) override;
+    void allocate_biases(double** d_biases, int size) override;
+    void copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) override;
+    void copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) override;
+    void free_weights(double* d_weights) override;
+    void free_biases(double* d_biases) override;
+
+    // methods to support GPU memory allocation and operations.
+    void allocate_vector(double** d_vector, int size) override;
+    void free_vector(double* d_vector) override;
+    void copy_to_device(double* d_vector, const Eigen::VectorXd& vector) override;
+    void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) override;
+    void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) override;
+    void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) override;
 };
 
 // Optional: Factory function to create an instance

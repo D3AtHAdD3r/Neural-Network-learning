@@ -1,5 +1,7 @@
 #include "Layer.hpp"
 #include"utils.h"
+#include"GPUComputationContext.hpp";
+#include"CPUComputationContext.hpp"
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -17,7 +19,9 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
     weights_(num_neurons, num_inputs), biases_(num_neurons),
     activations_(Eigen::VectorXd::Zero(num_neurons)),
     pre_activations_(num_neurons), input_(num_inputs),
-    rng_(seed), has_valid_activations_(false), activation_(activation), context_(context) {
+    rng_(seed), has_valid_activations_(false), activation_(activation), 
+    context_(context), d_weights_(nullptr), d_biases_(nullptr) {
+
     // Xavier initialization
     double stddev = std::sqrt(2.0 / (num_inputs + 1));
     std::normal_distribution<double> dist(0.0, stddev);
@@ -29,7 +33,29 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
         }
         biases_(i) = dist(rng_);
     }
+
+    // Allocate GPU memory and copy data if using GPU context
+    context_->allocate_vector(&d_input_, num_inputs_);
+    context_->allocate_vector(&d_pre_activations_, num_neurons_);
+    context_->allocate_vector(&d_activations_, num_neurons_);
+
+    context->allocate_weights(&d_weights_, num_neurons, num_inputs);
+    context_->allocate_biases(&d_biases_, num_neurons);
+    context_->copy_weights_to_device(d_weights_, weights_);
+    context_->copy_biases_to_device(d_biases_, biases_);
 }
+
+/**
+ * @brief Destructor to free GPU memory.
+ */
+Layer::~Layer() {
+    context_->free_vector(d_input_);
+    context_->free_vector(d_pre_activations_);
+    context_->free_vector(d_activations_);
+    context_->free_weights(d_weights_);
+    context_->free_biases(d_biases_);
+}
+
 
 /**
  * @brief Computes the forward pass, producing activations for the input.
@@ -39,8 +65,19 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
  */
 Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     input_ = input;
-    pre_activations_ = context_->computeLinear(weights_, input, biases_);
-    activations_ = context_->applyActivation(pre_activations_, activation_);
+    if (dynamic_cast<GPUComputationContext*>(context_)) {
+        // GPU path
+        context_->copy_to_device(d_input_, input);
+        context_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
+        context_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
+        context_->copy_to_host(activations_, d_activations_, num_neurons_);
+        context_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
+    }
+    else {
+        // CPU path
+        pre_activations_ = context_->computeLinear(weights_, input, biases_);
+        activations_ = context_->applyActivation(pre_activations_, activation_);
+    }
     has_valid_activations_ = true;
     return activations_;
 }
@@ -120,9 +157,15 @@ void Layer::set_weights(const Eigen::MatrixXd& weights)
 {
     assert(weights.rows() == weights_.rows() && weights.cols() == weights_.cols());
     weights_ = weights;
+    if (d_weights_) {
+        context_->copy_weights_to_device(d_weights_, weights_);
+    }
 }
 
 void Layer::set_biases(const Eigen::VectorXd& biases) {
     assert(biases.size() == biases_.size());
     biases_ = biases;
+    if (d_biases_) {
+        context_->copy_biases_to_device(d_biases_, biases_);
+    }
 }
