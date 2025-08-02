@@ -132,3 +132,11 @@ void CPUComputationContext::computeLinearGPU(double* d_weights, double* d_input,
 void CPUComputationContext::applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) {
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
+
+Eigen::VectorXd CPUComputationContext::computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
+void CPUComputationContext::debugPrint(const double* data, int n) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}

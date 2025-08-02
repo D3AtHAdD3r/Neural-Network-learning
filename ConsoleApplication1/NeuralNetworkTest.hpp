@@ -88,6 +88,7 @@ public:
 
 
     bool testLayerComputeActivationDerivative();
+    bool testLayerComputeActivationDerivativeGPU();
 
 public:
     //new network tests

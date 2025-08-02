@@ -25,8 +25,14 @@ public:
     enum class NeuronType { SIGMOID };  // Start with only sigmoid
     
 public:
-    Network(const std::vector<int>& sizes, double lambda = 0.0, LossType loss_type = LossType::MSE, NeuronType neuron_type = NeuronType::SIGMOID, ComputationContext* context = nullptr, unsigned int seed = std::random_device{}());
-    
+    Network(
+        const std::vector<int>& sizes, 
+        double lambda = 0.0, 
+        LossType loss_type = LossType::MSE, 
+        NeuronType neuron_type = NeuronType::SIGMOID, 
+        ComputationContext* context = nullptr, 
+        unsigned int seed = std::random_device{}());
+
     ~Network(); 
 
 public:
@@ -47,18 +53,16 @@ public:
     //setters
     void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
     void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
-    //getters
-    const std::vector<Layer>& get_layers() const { return layers; }
-
+    
 public:
-    //For unit tests(NeuralNetworkTest)
-    //TODO:  make them private or protected and expose it through friend test classes
-    std::vector<Layer>& get_mutable_layers() { return layers; }
-
+    //getters
+    const std::vector<std::unique_ptr<Layer>>& get_layers() const { return layers; }
+ 
+    //For unit tests(NeuralNetworkTest). TODO: make them private or protected and expose it through friend test classes
+    std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; }
 
 public:
     //Temporarily public
- 
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
@@ -77,17 +81,17 @@ private:
     double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:
-    int num_layers;                     ///< Number of layers
-    std::vector<int> sizes;             ///< Sizes of each layer
-    std::vector<Layer> layers;          ///< Layers of the network
-    std::mt19937 rng;                   ///< Random number generator
-    double last_test_loss;              ///< Cached test loss from evaluate
-    double lambda;                      ///< L2 regularization parameter
-    LossType loss_type_;                ///< Type of loss function to use
-    NeuronType neuron_type_;            ///< Track chosen neuron type
-    std::unique_ptr<Activation> activation_;  ///< Dynamic activation instance
-    ComputationContext* context_; // Raw pointer
-    bool owns_context_; // Flag to track ownership
+    int num_layers;                                 ///< Number of layers
+    std::vector<int> sizes;                         ///< Sizes of each layer
+    std::vector<std::unique_ptr<Layer>> layers;     ///< Layers of the network
+    std::mt19937 rng;                               ///< Random number generator
+    double last_test_loss;                          ///< Cached test loss from evaluate
+    double lambda;                                  ///< L2 regularization parameter
+    LossType loss_type_;                            ///< Type of loss function to use
+    NeuronType neuron_type_;                        ///< Track chosen neuron type
+    std::unique_ptr<Activation> activation_;        ///< Dynamic activation instance
+    ComputationContext* context_;                   // Raw pointer
+    bool owns_context_;                             // Flag to track ownership
 };
 
 #endif

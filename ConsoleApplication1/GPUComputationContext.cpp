@@ -37,6 +37,19 @@ __global__ void sumReductionKernel(const double* input, double* output, int n)
     }
 }
 
+//debug kernel
+__global__ void debugPrint_kernel(const double* data, int n) {
+    /*int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        printf("data[%d] = %f\n", idx, data[idx]);
+    }*/
+
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n) printf("data[%d] = %f\n", idx, data[idx]);
+
+}
+
+
 Eigen::VectorXd GPUComputationContext::computeLinear(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
 {
     int m = weights.rows(); // Output size
@@ -104,8 +117,6 @@ Eigen::MatrixXd GPUComputationContext::computeWeightGradient(const Eigen::Vector
 
     return result;
 }
-
-
 
 Eigen::VectorXd GPUComputationContext::applyActivation(const Eigen::VectorXd& z, const Activation* activation) {
     if (!activation) {
@@ -223,7 +234,6 @@ Eigen::VectorXd GPUComputationContext::computeActivationDerivative(const Eigen::
 
     return derivatives;
 }
-
 
 void GPUComputationContext::computeGradients(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads)
 {
@@ -412,7 +422,6 @@ double GPUComputationContext::compute_mse_loss(const Eigen::VectorXd& output, co
     return norm * norm;
 }
 
-
 double GPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) {
     int n = output.size();
     if (n != target.size()) {
@@ -454,6 +463,8 @@ double GPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& 
     return total_loss;
 }
 
+//-----new funcs after gpu compute optimization-------//
+
 void GPUComputationContext::allocate_weights(double** d_weights, int rows, int cols) {
     CHECK_CUDA(cudaMalloc(d_weights, rows * cols * sizeof(double)));
 }
@@ -482,9 +493,9 @@ void GPUComputationContext::free_biases(double* d_biases) {
     }
 }
 
-
 void GPUComputationContext::allocate_vector(double** d_vector, int size) {
-    CHECK_CUDA(cudaMalloc(d_vector, size * sizeof(double)));
+    //CHECK_CUDA(cudaMalloc(d_vector, size * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void**>(d_vector), size * sizeof(double)));
 }
 
 void GPUComputationContext::free_vector(double* d_vector) {
@@ -527,4 +538,57 @@ void GPUComputationContext::applyActivationGPU(double* d_z, double* d_a, int n, 
     CHECK_CUDNN(cudnnActivationForward(cudnnHandle, activationDesc, &alpha, tensorDesc, d_z, &beta, tensorDesc, d_a));
     CHECK_CUDNN(cudnnDestroyTensorDescriptor(tensorDesc));
     CHECK_CUDNN(cudnnDestroyActivationDescriptor(activationDesc));
+}
+
+Eigen::VectorXd GPUComputationContext::computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) {
+    if (!activation) {
+        throw std::runtime_error("Null activation pointer in computeActivationDerivative");
+    }
+
+    int n = size;
+
+    // Get cuDNN activation mode
+    cudnnActivationMode_t mode = activation->getCudnnActivationMode();
+
+    //TODO: can be moved to layer and implemented once after initializing d_dy?
+    // Initialize dy with ones (to compute raw derivative, not scaled by deltas)
+    std::vector<double> ones(n, 1.0);
+    CHECK_CUDA(cudaMemcpy(d_dy, ones.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+
+    // Set up cuDNN descriptors
+    cudnnTensorDescriptor_t tensorDesc;
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&tensorDesc));
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(tensorDesc, CUDNN_TENSOR_NCHW,
+        CUDNN_DATA_DOUBLE, 1, 1, n, 1));
+
+    cudnnActivationDescriptor_t activationDesc;
+    CHECK_CUDNN(cudnnCreateActivationDescriptor(&activationDesc));
+    CHECK_CUDNN(cudnnSetActivationDescriptor(activationDesc, mode,
+        CUDNN_NOT_PROPAGATE_NAN, 0.0));
+
+    // Compute derivatives using cuDNN
+    double alpha = 1.0, beta = 0.0;
+
+    CHECK_CUDNN(cudnnActivationBackward(cudnnHandle, activationDesc, &alpha, tensorDesc,
+        d_a, tensorDesc, d_dy, tensorDesc, d_z,
+        &beta, tensorDesc, d_derivatives));
+
+    // Transfer result back to host
+    Eigen::VectorXd derivatives(n);
+    CHECK_CUDA(cudaMemcpy(derivatives.data(), d_derivatives, n * sizeof(double), cudaMemcpyDeviceToHost));
+
+    // Clean up
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(tensorDesc));
+    CHECK_CUDNN(cudnnDestroyActivationDescriptor(activationDesc));
+
+    return derivatives;
+}
+
+void GPUComputationContext::debugPrint(const double* data, int num_inputs) {
+    // Launch with enough threads
+    int threads = 256;
+    int blocks = (num_inputs + threads - 1) / threads;
+    debugPrint_kernel << <blocks, threads >> > (data, num_inputs);
+    cudaDeviceSynchronize();
+
 }

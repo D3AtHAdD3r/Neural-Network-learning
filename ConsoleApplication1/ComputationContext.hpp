@@ -73,6 +73,10 @@ public:
     virtual void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) = 0;
     virtual void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) = 0;
     virtual void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) = 0;
+
+    virtual Eigen::VectorXd computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) = 0;
+
+    virtual void debugPrint(const double* data, int n) = 0;
 }; 
 
 

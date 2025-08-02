@@ -19,8 +19,9 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
     weights_(num_neurons, num_inputs), biases_(num_neurons),
     activations_(Eigen::VectorXd::Zero(num_neurons)),
     pre_activations_(num_neurons), input_(num_inputs),
-    rng_(seed), has_valid_activations_(false), activation_(activation), 
-    context_(context), d_weights_(nullptr), d_biases_(nullptr) {
+    rng_(seed), has_valid_activations_(false), d_pre_activations_(nullptr), activation_(activation),
+    context_(context), d_weights_(nullptr), d_biases_(nullptr), 
+    d_input_(nullptr), d_derivatives(nullptr), d_dy(nullptr){
 
     // Xavier initialization
     double stddev = std::sqrt(2.0 / (num_inputs + 1));
@@ -34,26 +35,44 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
         biases_(i) = dist(rng_);
     }
 
-    // Allocate GPU memory and copy data if using GPU context
-    context_->allocate_vector(&d_input_, num_inputs_);
-    context_->allocate_vector(&d_pre_activations_, num_neurons_);
-    context_->allocate_vector(&d_activations_, num_neurons_);
+    if (dynamic_cast<GPUComputationContext*>(context_)) {
+        // Allocate GPU memory and copy data if using GPU context
+        context_->allocate_vector(&d_input_, num_inputs_);
+        context_->allocate_vector(&d_pre_activations_, num_neurons_);
+        context_->allocate_vector(&d_activations_, num_neurons_);
+        context_->allocate_vector(&d_derivatives, num_neurons_);
+        context_->allocate_vector(&d_dy, num_neurons_);
 
-    context->allocate_weights(&d_weights_, num_neurons, num_inputs);
-    context_->allocate_biases(&d_biases_, num_neurons);
-    context_->copy_weights_to_device(d_weights_, weights_);
-    context_->copy_biases_to_device(d_biases_, biases_);
+        context_->allocate_weights(&d_weights_, num_neurons, num_inputs);
+        context_->allocate_biases(&d_biases_, num_neurons);
+        context_->copy_weights_to_device(d_weights_, weights_);
+        context_->copy_biases_to_device(d_biases_, biases_);
+
+        // Initialize dy with ones (to compute raw derivative, not scaled by deltas) 
+        Eigen::VectorXd ones = Eigen::VectorXd::Ones(num_neurons_);
+        context_->copy_to_device(d_dy, ones);
+    }
+    
 }
 
 /**
  * @brief Destructor to free GPU memory.
  */
 Layer::~Layer() {
-    context_->free_vector(d_input_);
-    context_->free_vector(d_pre_activations_);
-    context_->free_vector(d_activations_);
-    context_->free_weights(d_weights_);
-    context_->free_biases(d_biases_);
+
+    if (dynamic_cast<GPUComputationContext*>(context_)) {
+        context_->free_vector(d_input_);
+        d_input_ = nullptr;
+        context_->free_vector(d_pre_activations_);
+        d_pre_activations_ = nullptr;
+        context_->free_vector(d_activations_);
+        d_activations_ = nullptr;
+        context_->free_weights(d_weights_);
+        d_weights_ = nullptr;
+        context_->free_biases(d_biases_);
+        d_biases_ = nullptr;
+    }
+    
 }
 
 
@@ -65,9 +84,10 @@ Layer::~Layer() {
  */
 Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     input_ = input;
+    //Eigen::VectorXd ones = Eigen::VectorXd::Ones(20);
     if (dynamic_cast<GPUComputationContext*>(context_)) {
         // GPU path
-        context_->copy_to_device(d_input_, input);
+        context_->copy_to_device(d_input_, input_);
         context_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
         context_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
         context_->copy_to_host(activations_, d_activations_, num_neurons_);
@@ -88,12 +108,31 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
  * @param weight_grads Output weight gradients (num_neurons x num_inputs)
  * @param bias_grads Output bias gradients (num_neurons)
  */
+//void Layer::compute_gradients(const Eigen::VectorXd& deltas,
+//    Eigen::MatrixXd& weight_grads,
+//    Eigen::VectorXd& bias_grads) const 
+//{
+//    Eigen::VectorXd activation_derives = context_->computeActivationDerivative(activations_, pre_activations_, activation_);
+//    context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+//}
+
+
 void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     Eigen::MatrixXd& weight_grads,
-    Eigen::VectorXd& bias_grads) const {
-    Eigen::VectorXd activation_derives = context_->computeActivationDerivative(activations_, pre_activations_, activation_);
-    context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+    Eigen::VectorXd& bias_grads) const
+{
+    if (dynamic_cast<GPUComputationContext*>(context_)) {
+        // GPU path
+        Eigen::VectorXd activation_derives = context_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
+        context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+    }
+    else {
+        // CPU path
+        Eigen::VectorXd activation_derives = context_->computeActivationDerivative(activations_, pre_activations_, activation_);
+        context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+    }
 }
+
 
 /**
  * @brief Updates weights and biases using pre-computed gradients.
@@ -167,5 +206,21 @@ void Layer::set_biases(const Eigen::VectorXd& biases) {
     biases_ = biases;
     if (d_biases_) {
         context_->copy_biases_to_device(d_biases_, biases_);
+    }
+}
+
+void Layer::set_pre_activations(const Eigen::VectorXd& pre_activations) {
+    assert(pre_activations.size() == pre_activations_.size());
+    pre_activations_ = pre_activations;
+    if (d_pre_activations_) {
+        context_->copy_to_device(d_pre_activations_, pre_activations);
+    }
+}
+
+void Layer::set_activations(const Eigen::VectorXd& activations) {
+    assert(activations.size() == activations_.size());
+    activations_ = activations;
+    if (d_activations_) {
+        context_->copy_to_device(d_activations_, activations);
     }
 }

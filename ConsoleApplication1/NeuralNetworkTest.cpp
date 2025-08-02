@@ -839,6 +839,115 @@ bool NeuralNetworkTest::testLayerComputeActivationDerivative()
     return all_passed;
 }
 
+bool NeuralNetworkTest::testLayerComputeActivationDerivativeGPU()
+{
+    std::cout << "----- Running testLayerComputeActivationDerivative... -----\n";
+    ++total_tests_;
+    bool all_passed = true;
+    std::string contextName;
+    std::string errorMsg;
+    std::map<std::string, Eigen::VectorXd> derivatives_map;
+
+    // Test CPU and GPU contexts
+    for (auto context : computeContexts) {
+        if (dynamic_cast<CPUComputationContext*>(context)) {
+            contextName = "CPUContext";
+        }
+        else if (dynamic_cast<GPUComputationContext*>(context)) {
+            contextName = "GPUContext";
+        }
+        else {
+            std::cerr << "Unknown computation context in testLayerComputeActivationDerivative\n";
+            throw std::runtime_error("Unknown computation context");
+        }
+
+        std::cout << "Test: " << contextName << "\n";
+
+        // Initialize layer
+        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
+
+        // Initialize pre-activations and activations
+        Eigen::VectorXd pre_activations(layer_neurons_);
+        pre_activations << 0.0, 1.0, -1.0; // Simple test values
+        
+        Eigen::VectorXd activations = computeActivation(pre_activations);
+        layer.set_pre_activations(pre_activations);
+        layer.set_activations(activations);
+
+        // Compute expected derivatives
+        Eigen::VectorXd expected_derivatives = computeActivationDerivative(pre_activations);
+
+        // Compute derivatives using context
+        Eigen::VectorXd derivatives;
+        if (contextName == "GPUContext") {
+            derivatives = context->computeActivationDerivativeGPU(layer.get_d_activations_(), layer.get_d_pre_activations_(), layer.get_d_dy(), layer.get_d_derivatives(), layer.get_num_neurons(), activation_.get());
+        }
+        else {
+            derivatives = context->computeActivationDerivative(activations, pre_activations, activation_.get());
+        }
+        
+        // Check derivative size
+        errorMsg = contextName + ": Incorrect derivative size";
+        assertTrue(derivatives.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
+
+       
+        // Check derivatives against expected
+        bool passed = true;
+        errorMsg = contextName + ": Derivative incorrect";
+        for (int i = 0; i < derivatives.size(); ++i) {
+            if (std::abs(derivatives(i) - expected_derivatives(i)) > TOL) {
+                passed = false;
+                assertApprox(derivatives(i), expected_derivatives(i), TOL, errorMsg, __FILE__, __LINE__);
+            }
+        }
+
+        // Store derivatives for CPU-GPU comparison
+        derivatives_map[contextName] = derivatives;
+
+        // Print details
+        std::cout << std::fixed << std::setprecision(6);
+        std::cout << "Pre-activations: " << pre_activations.transpose() << "\n";
+        std::cout << "Activations: " << activations.transpose() << "\n";
+        std::cout << "Derivatives: " << derivatives.transpose() << "\n";
+        std::cout << "Expected Derivatives: " << expected_derivatives.transpose() << "\n";
+        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
+
+        if (!passed) {
+            all_passed = false;
+            std::cerr << "Test: " << contextName << " failed\n";
+            return false;
+        }
+    }
+
+    // Compare CPU and GPU derivatives
+    std::cout << "Test: Compare CPU and GPU derivatives\n";
+    bool passed = true;
+    errorMsg = "CPU and GPU derivatives differ";
+    for (int i = 0; i < derivatives_map["CPUContext"].size(); ++i) {
+        if (std::abs(derivatives_map["CPUContext"](i) - derivatives_map["GPUContext"](i)) > TOL) {
+            passed = false;
+            assertApprox(derivatives_map["CPUContext"](i), derivatives_map["GPUContext"](i), TOL, errorMsg, __FILE__, __LINE__);
+        }
+    }
+
+    // Print comparison results
+    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
+
+    if (!passed) {
+        all_passed = false;
+        std::cerr << "Test: Compare CPU and GPU failed\n";
+    }
+
+    if (all_passed) {
+        ++passed_tests_;
+        std::cout << "----- testLayerComputeActivationDerivative Passed -----\n\n";
+    }
+    else {
+        std::cout << "----- testLayerComputeActivationDerivative Failed -----\n\n";
+    }
+    return all_passed;
+}
+
 bool NeuralNetworkTest::testUpdateMiniBatchSimplified()
 {
     std::cout << "----- Running testUpdateMiniBatchSimplified... -----\n";
@@ -879,8 +988,8 @@ bool NeuralNetworkTest::testUpdateMiniBatchSimplified()
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         for (const auto& layer : net.get_layers()) {
-            weights.push_back(layer.get_weights());
-            biases.push_back(layer.get_biases());
+            weights.push_back(layer->get_weights());
+            biases.push_back(layer->get_biases());
         }
 
         weights_map[contextName] = weights;
@@ -905,8 +1014,8 @@ bool NeuralNetworkTest::testUpdateMiniBatchSimplified()
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         for (const auto& layer : net.get_layers()) {
-            weights.push_back(layer.get_weights());
-            biases.push_back(layer.get_biases());
+            weights.push_back(layer->get_weights());
+            biases.push_back(layer->get_biases());
         }
 
         std::vector<Eigen::MatrixXd> weight_grads;
@@ -1273,7 +1382,7 @@ void NeuralNetworkTest::testNetworkGradientChecking()
         double l2 = 0.0;
         if (lambda > 0.0 && n > 0) {
             for (const auto& layer : net.get_layers()) { // Assuming get_layers() exists
-                l2 += layer.get_weights().squaredNorm();
+                l2 += layer->get_weights().squaredNorm();
             }
             l2 *= 0.5 * lambda / n;
         }
@@ -1284,8 +1393,8 @@ void NeuralNetworkTest::testNetworkGradientChecking()
     for (size_t l = 0; l < nabla_w.size(); ++l) {
 
         const auto& layer = net.get_layers()[l];
-        Eigen::MatrixXd weights = layer.get_weights();
-        Eigen::VectorXd biases = layer.get_biases();
+        Eigen::MatrixXd weights = layer->get_weights();
+        Eigen::VectorXd biases = layer->get_biases();
         int max_rows = std::min(2, static_cast<int>(weights.rows())); // Limit for speed
         int max_cols = std::min(2, static_cast<int>(weights.cols()));
 
@@ -1473,7 +1582,7 @@ bool NeuralNetworkTest::runAllTests()
     total_tests_ = 0;
     //testLayerComputeActivationDerivative();
     //testLayerConstructor();
-    testLayerForward();
+    //testLayerForward();
     //testLayerGradients();
     //testLayerUpdateParameters();
     //testNetworkConstructor();
@@ -1486,6 +1595,7 @@ bool NeuralNetworkTest::runAllTests()
     //testBackpropGradientComputation();
     //testEvaluate();
     //doStuff();
+    //testLayerComputeActivationDerivativeGPU();
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
 }

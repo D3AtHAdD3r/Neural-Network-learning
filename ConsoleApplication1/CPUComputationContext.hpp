@@ -64,6 +64,11 @@ public:
     void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) override;
     void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) override;
     void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) override;
+
+    Eigen::VectorXd computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) override;
+
+    //debug
+    void debugPrint(const double* data, int n) override;
 };
 
 // Optional: Factory function to create an instance (not required but useful)

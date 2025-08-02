@@ -31,8 +31,11 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
     }
 
     for (size_t i = 1; i < sizes.size(); ++i) {
-        layers.emplace_back(sizes[i - 1], sizes[i], activation_.get(), context_, static_cast<unsigned int>(rng()));
+        layers.emplace_back(std::make_unique<Layer>(
+            sizes[i - 1], sizes[i], activation_.get(), context_, static_cast<unsigned int>(rng())
+        ));
     }
+
 }
 
 Network::~Network() {
@@ -50,7 +53,7 @@ Network::~Network() {
 Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
     Eigen::VectorXd activation = a;
     for (auto& layer : layers) {
-        activation = layer.forward(activation);
+        activation = layer->forward(activation);
     }
     return activation;
 }
@@ -118,8 +121,8 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     std::vector<Eigen::MatrixXd> weight_grads;
     std::vector<Eigen::VectorXd> bias_grads;
     for (size_t i = 0; i < layers.size(); ++i) {
-        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i].get_num_neurons(), layers[i].get_num_inputs()));
-        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i].get_num_neurons()));
+        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
+        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
     }
 
     for (const auto& [x, y] : mini_batch) {
@@ -136,7 +139,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
     double scale = eta / mini_batch.size();
     for (size_t i = 0; i < layers.size(); ++i) {
-        layers[i].update_parameters(weight_grads[i], bias_grads[i], scale);
+        layers[i]->update_parameters(weight_grads[i], bias_grads[i], scale);
     }
 
     return norm;
@@ -157,8 +160,8 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 
     // Initialize gradient vectors and matrices
     for (size_t i = 0; i < layers.size(); ++i) {
-        nabla_b[i] = Eigen::VectorXd::Zero(layers[i].get_activations().size());
-        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i].get_activations().size(), i == 0 ? x.size() : layers[i - 1].get_activations().size());
+        nabla_b[i] = Eigen::VectorXd::Zero(layers[i]->get_activations().size());
+        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i]->get_activations().size(), i == 0 ? x.size() : layers[i - 1]->get_activations().size());
     }
 
     // Forward pass
@@ -166,11 +169,24 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     std::vector<Eigen::VectorXd> activations = { x };
     std::vector<Eigen::VectorXd> zs;
 
-    for (size_t i = 0; i < layers.size(); ++i) {
+    /*for (size_t i = 0; i < layers.size(); ++i) {
         activation = layers[i].forward(activation);
         zs.push_back(layers[i].get_pre_activations());
         activations.push_back(layers[i].get_activations());
+    }*/
+
+    for (auto& layer : layers) {
+        activation = layer->forward(activation);
+        zs.push_back(layer->get_pre_activations());
+        activations.push_back(layer->get_activations());
     }
+
+    //for (size_t i = 0; i < layers.size(); ++i) {
+    //    Layer& layer = layers[i];  // 👈 reference, not copy
+    //    activation = layer.forward(activation);
+    //    zs.push_back(layer.get_pre_activations());
+    //    activations.push_back(layer.get_activations());
+    //}
 
     // Backward pass: Compute delta for the output layer
     Eigen::VectorXd delta;
@@ -191,7 +207,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     nabla_w.back() = context_->computeWeightGradient(delta, activations[activations.size() - 2]);
 
     if (lambda > 0.0 && n > 0) {
-        nabla_w.back() += (lambda / n) * layers[layers.size() - 1].get_weights(); // Scaled L2
+        nabla_w.back() += (lambda / n) * layers[layers.size() - 1]->get_weights(); // Scaled L2
     }
 
 
@@ -204,7 +220,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         //Eigen::VectorXd sp = activation_->derivative(&current_activations, &current_pre_activations);
         //delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
         Eigen::VectorXd sp = context_->computeActivationDerivative(current_activations, current_pre_activations, activation_.get());
-        delta = context_->computeLinear(layers[layers.size() - l + 1].get_weights().transpose(), delta, Eigen::VectorXd::Zero(sp.size())).cwiseProduct(sp);
+        delta = context_->computeLinear(layers[layers.size() - l + 1]->get_weights().transpose(), delta, Eigen::VectorXd::Zero(sp.size())).cwiseProduct(sp);
         
         // Compute gradients
         nabla_b[nabla_b.size() - l] = delta;
@@ -213,7 +229,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         nabla_w[nabla_w.size() - l] = context_->computeWeightGradient(delta, activations[activations.size() - l - 1]);
         
         if (lambda > 0.0 && n > 0) {
-            nabla_w[nabla_w.size() - l] += (lambda / n) * layers[layers.size() - l].get_weights(); // Scaled L2
+            nabla_w[nabla_w.size() - l] += (lambda / n) * layers[layers.size() - l]->get_weights(); // Scaled L2
         }
     }
 
@@ -232,7 +248,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
     double weight_norm = 0.0;
     for (const auto& layer : layers) {
-        weight_norm += context_->compute_squared_norm(layer.get_weights());
+        weight_norm += context_->compute_squared_norm(layer->get_weights());
     }
 
     for (const auto& [x, y] : test_data) {
@@ -267,7 +283,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
     double weight_norm = 0.0;
     for (const auto& layer : layers) {
         //weight_norm += layer.get_weights().squaredNorm();
-        weight_norm += context_->compute_squared_norm(layer.get_weights());
+        weight_norm += context_->compute_squared_norm(layer->get_weights());
     }
 
     for (const auto& [x, y] : test_data) {
@@ -341,8 +357,8 @@ double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorX
     std::vector<Eigen::MatrixXd> weight_grads;
     std::vector<Eigen::VectorXd> bias_grads;
     for (size_t i = 0; i < layers.size(); ++i) {
-        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i].get_num_neurons(), layers[i].get_num_inputs()));
-        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i].get_num_neurons()));
+        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
+        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
     }
 
     for (const auto& [x, y] : mini_batch) {
@@ -369,7 +385,7 @@ void Network::display_biases() const {
     std::cout << "=== Biases ===" << std::endl;
     for (size_t i = 0; i < layers.size(); ++i) {
         std::string layer_name = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << layer_name << ":\n" << layers[i].print_parameters(false);
+        std::cout << layer_name << ":\n" << layers[i]->print_parameters(false);
     }
 }
 
@@ -382,7 +398,7 @@ void Network::display_weights() const {
     for (size_t i = 0; i < layers.size(); ++i) {
         std::string from_layer = (i == 0) ? "Input Layer" : "Hidden Layer " + std::to_string(i);
         std::string to_layer = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << "From " << from_layer << " to " << to_layer << ":\n" << layers[i].print_parameters(false);
+        std::cout << "From " << from_layer << " to " << to_layer << ":\n" << layers[i]->print_parameters(false);
     }
 }
 
@@ -395,8 +411,8 @@ void Network::display_layer_biases(int max_elements) const {
     std::cout << "=== Layer Biases ===" << std::endl;
     for (size_t i = 0; i < layers.size(); ++i) {
         std::string layer_name = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << layer_name << " (" << layers[i].get_num_neurons() << " biases):" << std::endl;
-        const Eigen::VectorXd& biases = layers[i].get_biases();
+        std::cout << layer_name << " (" << layers[i]->get_num_neurons() << " biases):" << std::endl;
+        const Eigen::VectorXd& biases = layers[i]->get_biases();
         int display_count = std::min(static_cast<int>(biases.size()), max_elements);
         std::cout << "  [";
         for (int j = 0; j < display_count; ++j) {
@@ -423,8 +439,8 @@ void Network::display_layer_weights(int max_elements) const {
         std::string from_layer = (i == 0) ? "Input Layer" : "Hidden Layer " + std::to_string(i);
         std::string to_layer = (i == layers.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
         std::cout << "From " << from_layer << " to " << to_layer
-            << " (" << layers[i].get_num_neurons() << "x" << layers[i].get_num_inputs() << " matrix):" << std::endl;
-        const Eigen::MatrixXd& weights = layers[i].get_weights();
+            << " (" << layers[i]->get_num_neurons() << "x" << layers[i]->get_num_inputs() << " matrix):" << std::endl;
+        const Eigen::MatrixXd& weights = layers[i]->get_weights();
         int max_rows = std::min(static_cast<int>(weights.rows()), max_elements);
         int max_cols = std::min(static_cast<int>(weights.cols()), max_elements);
         for (int r = 0; r < max_rows; ++r) {
@@ -501,10 +517,10 @@ void Network::set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights
     if (layer_idx >= layers.size()) {
         throw std::out_of_range("Layer index out of bounds");
     }
-    if (weights.rows() != layers[layer_idx].get_num_neurons() || weights.cols() != layers[layer_idx].get_num_inputs()) {
+    if (weights.rows() != layers[layer_idx]->get_num_neurons() || weights.cols() != layers[layer_idx]->get_num_inputs()) {
         throw std::invalid_argument("Weight matrix dimensions mismatch");
     }
-    layers[layer_idx].set_weights(weights);
+    layers[layer_idx]->set_weights(weights);
 }
 
 /**
@@ -516,9 +532,9 @@ void Network::set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases) 
     if (layer_idx >= layers.size()) {
         throw std::out_of_range("Layer index out of bounds");
     }
-    if (biases.size() != layers[layer_idx].get_num_neurons()) {
+    if (biases.size() != layers[layer_idx]->get_num_neurons()) {
         throw std::invalid_argument("Bias vector dimension mismatch");
     }
-    layers[layer_idx].set_biases(biases);
+    layers[layer_idx]->set_biases(biases);
 }
 

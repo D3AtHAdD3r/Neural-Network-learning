@@ -18,24 +18,6 @@
 
 class Layer
 {
-private:
-	int num_inputs_;                    ///< Number of inputs to the layer
-	int num_neurons_;                   ///< Number of neurons in the layer
-	Eigen::MatrixXd weights_;           ///< Weight matrix (num_neurons x num_inputs)
-	Eigen::VectorXd biases_;            ///< Bias vector (num_neurons)
-	Eigen::VectorXd activations_;       ///< Cached activations (num_neurons)
-	Eigen::VectorXd pre_activations_;   ///< Cached pre-activations (z = W * a + b)
-	Eigen::VectorXd input_;             ///< Cached input for gradient computation
-	std::mt19937 rng_;                  ///< Random number generator for initialization
-	bool has_valid_activations_;        ///< Tracks if activations are valid
-	const Activation* activation_;      ///< Pointer to activation function (owned externally)
-	ComputationContext* context_;       ///< Computation context for operations
-	double* d_weights_;                 ///< GPU pointer for weights
-	double* d_biases_;                  ///< GPU pointer for biases
-	double* d_input_;
-	double* d_pre_activations_;
-	double* d_activations_;
-
 public:
 	/**
 	 * @brief Constructs a layer with specified input size, number of neurons, and activation.
@@ -51,6 +33,13 @@ public:
 	 */
 	~Layer();
 
+	//Delete copy and move operations
+	Layer(const Layer&) = delete;
+	Layer& operator=(const Layer&) = delete;
+	Layer(Layer&&) = delete;
+	Layer& operator=(Layer&&) = delete;
+
+public:
 	/**
 	 * @brief Computes the forward pass, producing activations for the input.
 	 * @param input Input vector (num_inputs x 1)
@@ -83,62 +72,47 @@ public:
 	 */
 	std::string print_parameters(bool json_format = false) const;
 
-	/**
-	 * @brief Gets the current activations.
-	 * @return Reference to activations vector
-	 */
+
+public:
 	const Eigen::VectorXd& get_activations() const { return activations_; }
-
-	/**
-	 * @brief Gets the pre-activation values (z = W * a + b).
-	 * @return Reference to pre-activations vector
-	 */
 	const Eigen::VectorXd& get_pre_activations() const { return pre_activations_; } // New getter
-	
-	/**
-	 * @brief Gets the weight matrix.
-	 * @return Reference to weights matrix
-	 */
 	const Eigen::MatrixXd& get_weights() const { return weights_; }
-
-	/**
-	 * @brief Gets the bias vector.
-	 * @return Reference to biases vector
-	 */
 	const Eigen::VectorXd& get_biases() const { return biases_; };
-
-	/**
-	 * @brief Gets the GPU weight pointer.
-	 * @return Pointer to weights on GPU
-	 */
-	double* get_d_weights() const { return d_weights_; }
-
-	/**
-	 * @brief Gets the GPU bias pointer.
-	 * @return Pointer to biases on GPU
-	 */
-	double* get_d_biases() const { return d_biases_; }
-
-	/**
-	 * @brief Gets the number of neurons.
-	 * @return Number of neurons
-	 */
 	const int get_num_neurons() const { return num_neurons_; };
-
-	/**
-	 * @brief Gets the number of inputs.
-	 * @return Number of inputs
-	 */
 	const int get_num_inputs() const { return num_inputs_; };
 
-	/**
-	 * @brief setter
-	 */
+	double* get_d_input_() const { return d_input_; }
+	double* get_d_pre_activations_() const { return d_pre_activations_; }
+	double* get_d_activations_() const { return d_activations_; }
+	double* get_d_weights() const { return d_weights_; }
+	double* get_d_biases() const { return d_biases_; }
+	double* get_d_derivatives() const { return d_derivatives; }
+	double* get_d_dy() const { return d_dy; }
+
 	void set_weights(const Eigen::MatrixXd& weights);
-	/**
-	 * @brief setter
-	 */
 	void set_biases(const Eigen::VectorXd& biases);
+	void set_pre_activations(const Eigen::VectorXd& pre_activations);
+	void set_activations(const Eigen::VectorXd& activations);
+
+private:
+	int num_inputs_;                    ///< Number of inputs to the layer
+	int num_neurons_;                   ///< Number of neurons in the layer
+	Eigen::MatrixXd weights_;           ///< Weight matrix (num_neurons x num_inputs)
+	Eigen::VectorXd biases_;            ///< Bias vector (num_neurons)
+	Eigen::VectorXd activations_;       ///< Cached activations (num_neurons)
+	Eigen::VectorXd pre_activations_;   ///< Cached pre-activations (z = W * a + b)
+	Eigen::VectorXd input_;             ///< Cached input for gradient computation
+	std::mt19937 rng_;                  ///< Random number generator for initialization
+	bool has_valid_activations_;        ///< Tracks if activations are valid
+	const Activation* activation_;      ///< Pointer to activation function (owned externally)
+	ComputationContext* context_;       ///< Computation context for operations
+	double* d_weights_;                 ///< GPU pointer for weights
+	double* d_biases_;                  ///< GPU pointer for biases
+	double* d_input_;
+	double* d_pre_activations_;
+	double* d_activations_;
+	double* d_derivatives;
+	double* d_dy;
 };
 
 #endif // LAYER_HPP
