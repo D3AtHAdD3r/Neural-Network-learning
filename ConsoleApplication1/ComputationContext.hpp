@@ -63,6 +63,8 @@ public:
     virtual void allocate_biases(double** d_biases, int size) = 0;
     virtual void copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) = 0;
     virtual void copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) = 0;
+    virtual void copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) = 0;
+    virtual void copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) = 0;
     virtual void free_weights(double* d_weights) = 0;
     virtual void free_biases(double* d_biases) = 0;
 
@@ -71,11 +73,18 @@ public:
     virtual void free_vector(double* d_vector) = 0;
     virtual void copy_to_device(double* d_vector, const Eigen::VectorXd& vector) = 0;
     virtual void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) = 0;
+    virtual void copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) =0;
     virtual void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) = 0;
     virtual void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) = 0;
 
     virtual Eigen::VectorXd computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) = 0;
     virtual void computeGradientsGPU(const Eigen::VectorXd& deltas, double* d_derivatives, double* d_input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, int m, int n) = 0;
+    virtual void updateParametersGPU(double* d_weights,
+            double* d_biases,
+            const Eigen::MatrixXd& weight_grads,
+            const Eigen::VectorXd& bias_grads,
+            int m, int n, int bias_size, double scale) = 0;
+    
     virtual void debugPrint(const double* data, int n) = 0;
 }; 
 

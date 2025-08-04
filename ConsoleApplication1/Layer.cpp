@@ -128,19 +128,23 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     }
 }
 
-
-/**
- * @brief Updates weights and biases using pre-computed gradients.
- * @param weight_grads Weight gradients (num_neurons x num_inputs)
- * @param bias_grads Bias gradients (num_neurons)
- */
 void Layer::update_parameters(const Eigen::MatrixXd& weight_grads,
     const Eigen::VectorXd& bias_grads, double scale) {
-    context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
 
-    //Temporary fix, till updateParametersGPU gets created or updateParameters gets optimized
-    context_->copy_weights_to_device(d_weights_, weights_);
-    context_->copy_biases_to_device(d_biases_, biases_);
+    if (dynamic_cast<GPUComputationContext*>(context_)) {
+        context_->updateParametersGPU(
+            d_weights_, d_biases_,
+            weight_grads, bias_grads,
+            num_neurons_, num_inputs_, num_neurons_, scale
+        );
+
+        // Update host weights and biases for compatibility
+        context_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
+        context_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
+    }
+    else {
+        context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
+    }
 }
 
 /**

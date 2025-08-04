@@ -489,6 +489,16 @@ void GPUComputationContext::copy_biases_to_device(double* d_biases, const Eigen:
     CHECK_CUDA(cudaMemcpy(d_biases, biases.data(), biases.size() * sizeof(double), cudaMemcpyHostToDevice));
 }
 
+void GPUComputationContext::copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) {
+    weights.resize(rows, cols);
+    CHECK_CUDA(cudaMemcpy(weights.data(), d_weights, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUComputationContext::copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) {
+    biases.resize(size);
+    CHECK_CUDA(cudaMemcpy(biases.data(), d_biases, size * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
 void GPUComputationContext::free_weights(double* d_weights) {
     if (d_weights) {
         CHECK_CUDA(cudaFree(d_weights));
@@ -520,6 +530,12 @@ void GPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vect
     vector.resize(size);
     CHECK_CUDA(cudaMemcpy(vector.data(), d_vector, size * sizeof(double), cudaMemcpyDeviceToHost));
 }
+
+void GPUComputationContext::copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) {
+    matrix.resize(rows, cols);
+    CHECK_CUDA(cudaMemcpy(matrix.data(), d_matrix, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
 
 void GPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
     double alpha = 1.0, beta = 0.0;
@@ -633,3 +649,31 @@ void GPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas,
     CHECK_CUDA(cudaFree(d_weight_grads));
 }
 
+void GPUComputationContext::updateParametersGPU(double* d_weights,
+    double* d_biases,
+    const Eigen::MatrixXd& weight_grads,
+    const Eigen::VectorXd& bias_grads,
+    int m, int n, int bias_size, double scale) {
+
+    // Allocate device memory for gradients
+    double* d_weight_grads, * d_bias_grads;
+    CHECK_CUDA(cudaMalloc(&d_weight_grads, m * n * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(&d_bias_grads, bias_size * sizeof(double)));
+
+    // Copy gradients to device
+    CHECK_CUDA(cudaMemcpy(d_weight_grads, weight_grads.data(), m * n * sizeof(double), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_bias_grads, bias_grads.data(), bias_size * sizeof(double), cudaMemcpyHostToDevice));
+
+    // Scale gradients: weight_grads *= scale, bias_grads *= scale
+    CHECK_CUBLAS(cublasDscal(cublasHandle, m * n, &scale, d_weight_grads, 1));
+    CHECK_CUBLAS(cublasDscal(cublasHandle, bias_size, &scale, d_bias_grads, 1));
+
+    // Update parameters: weights -= weight_grads, biases -= bias_grads
+    double alpha = -1.0;
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, m * n, &alpha, d_weight_grads, 1, d_weights, 1));
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, bias_size, &alpha, d_bias_grads, 1, d_biases, 1));
+
+    // Free device memory
+    CHECK_CUDA(cudaFree(d_weight_grads));
+    CHECK_CUDA(cudaFree(d_bias_grads));
+}

@@ -1583,8 +1583,8 @@ bool NeuralNetworkTest::runAllTests()
     //testLayerComputeActivationDerivative();
     //testLayerConstructor();
     //testLayerForward();
-    testLayerGradients();
-    //testLayerUpdateParameters();
+    //testLayerGradients();
+    testLayerUpdateParameters();
     //testNetworkConstructor();
     //testNetworkFeedforward();
     //testNetworkBackprop();

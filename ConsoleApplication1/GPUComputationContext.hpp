@@ -99,6 +99,8 @@ public:
     void allocate_biases(double** d_biases, int size) override;
     void copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) override;
     void copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) override;
+    void copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) override;
+    void copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) override;
     void free_weights(double* d_weights) override;
     void free_biases(double* d_biases) override;
 
@@ -107,6 +109,7 @@ public:
     void free_vector(double* d_vector) override;
     void copy_to_device(double* d_vector, const Eigen::VectorXd& vector) override;
     void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) override;
+    void copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) override;
     void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) override;
     void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) override;
 
@@ -118,6 +121,12 @@ public:
         Eigen::MatrixXd& weight_grads,
         Eigen::VectorXd& bias_grads,
         int m, int n) override;
+
+    void updateParametersGPU(double* d_weights,
+        double* d_biases,
+        const Eigen::MatrixXd& weight_grads,
+        const Eigen::VectorXd& bias_grads,
+        int m, int n, int bias_size, double scale) override;
 
     //debug
     void debugPrint(const double* data, int n) override;

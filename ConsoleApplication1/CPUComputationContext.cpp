@@ -101,6 +101,15 @@ void CPUComputationContext::copy_biases_to_device(double* d_biases, const Eigen:
 	// No-op for CPU
 }
 
+void CPUComputationContext::copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) {
+	// No-op for CPU
+}
+
+void CPUComputationContext::copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) {
+	// No-op for CPU
+}
+
+
 void CPUComputationContext::free_weights(double* d_weights) {
 	// No-op for CPU
 }
@@ -125,6 +134,10 @@ void CPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vect
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
 
+void CPUComputationContext::copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
 void CPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
@@ -141,7 +154,17 @@ void CPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas, d
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
 
+void CPUComputationContext::updateParametersGPU(double* d_weights,
+	double* d_biases,
+	const Eigen::MatrixXd& weight_grads,
+	const Eigen::VectorXd& bias_grads,
+	int m, int n, int bias_size, double scale) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
 
 void CPUComputationContext::debugPrint(const double* data, int n) {
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
+
+
+
