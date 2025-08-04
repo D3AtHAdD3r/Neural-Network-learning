@@ -1,8 +1,6 @@
 #include "ComputationContext.hpp"
 
 
-
-
 // CPU implementation of the ComputationContext using Eigen library
 class CPUComputationContext : public ComputationContext {
 public:

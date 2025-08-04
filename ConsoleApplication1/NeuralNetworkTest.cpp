@@ -1582,7 +1582,7 @@ bool NeuralNetworkTest::runAllTests()
     total_tests_ = 0;
     //testLayerComputeActivationDerivative();
     //testLayerConstructor();
-    //testLayerForward();
+    testLayerForward();
     //testLayerGradients();
     //testLayerUpdateParameters();
     //testNetworkConstructor();

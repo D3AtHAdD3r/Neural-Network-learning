@@ -169,30 +169,15 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     std::vector<Eigen::VectorXd> activations = { x };
     std::vector<Eigen::VectorXd> zs;
 
-    /*for (size_t i = 0; i < layers.size(); ++i) {
-        activation = layers[i].forward(activation);
-        zs.push_back(layers[i].get_pre_activations());
-        activations.push_back(layers[i].get_activations());
-    }*/
-
     for (auto& layer : layers) {
         activation = layer->forward(activation);
         zs.push_back(layer->get_pre_activations());
         activations.push_back(layer->get_activations());
     }
 
-    //for (size_t i = 0; i < layers.size(); ++i) {
-    //    Layer& layer = layers[i];  // 👈 reference, not copy
-    //    activation = layer.forward(activation);
-    //    zs.push_back(layer.get_pre_activations());
-    //    activations.push_back(layer.get_activations());
-    //}
-
     // Backward pass: Compute delta for the output layer
     Eigen::VectorXd delta;
     if (neuron_type_ == NeuronType::SIGMOID && (loss_type_ == LossType::MSE || loss_type_ == LossType::CROSS_ENTROPY)) {
-
-        //delta = cost_derivative(activations.back(), y).cwiseProduct(activation_->derivative(&activations.back(), &zs.back()));
         Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
         Eigen::VectorXd activation_deriv = context_->computeActivationDerivative(activations.back(), zs.back(), activation_.get());
         delta = cost_deriv.cwiseProduct(activation_deriv); // Element-wise multiplication       
@@ -203,7 +188,6 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 
     // Assign gradients for the last layer
     nabla_b.back() = delta;
-    //nabla_w.back() = delta * activations[activations.size() - 2].transpose();
     nabla_w.back() = context_->computeWeightGradient(delta, activations[activations.size() - 2]);
 
     if (lambda > 0.0 && n > 0) {
@@ -217,15 +201,11 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         const Eigen::VectorXd& current_pre_activations = zs[zs.size() - l];  // Pre-activations of current layer
 
         // Compute delta for the current layer
-        //Eigen::VectorXd sp = activation_->derivative(&current_activations, &current_pre_activations);
-        //delta = (layers[layers.size() - l + 1].get_weights().transpose() * delta).cwiseProduct(sp);
         Eigen::VectorXd sp = context_->computeActivationDerivative(current_activations, current_pre_activations, activation_.get());
         delta = context_->computeLinear(layers[layers.size() - l + 1]->get_weights().transpose(), delta, Eigen::VectorXd::Zero(sp.size())).cwiseProduct(sp);
         
         // Compute gradients
         nabla_b[nabla_b.size() - l] = delta;
-       
-        //nabla_w[nabla_w.size() - l] = delta * activations[activations.size() - l - 1].transpose();
         nabla_w[nabla_w.size() - l] = context_->computeWeightGradient(delta, activations[activations.size() - l - 1]);
         
         if (lambda > 0.0 && n > 0) {

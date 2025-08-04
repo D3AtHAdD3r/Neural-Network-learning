@@ -61,16 +61,21 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
 Layer::~Layer() {
 
     if (dynamic_cast<GPUComputationContext*>(context_)) {
-        context_->free_vector(d_input_);
-        d_input_ = nullptr;
-        context_->free_vector(d_pre_activations_);
-        d_pre_activations_ = nullptr;
-        context_->free_vector(d_activations_);
-        d_activations_ = nullptr;
+        context_->free_vector(d_input_);        
+        context_->free_vector(d_pre_activations_);        
+        context_->free_vector(d_activations_);        
         context_->free_weights(d_weights_);
-        d_weights_ = nullptr;
         context_->free_biases(d_biases_);
+        context_->free_biases(d_derivatives);  
+        context_->free_biases(d_dy);
+       
+        d_input_ = nullptr;
+        d_pre_activations_ = nullptr;
+        d_activations_ = nullptr;
+        d_weights_ = nullptr;
         d_biases_ = nullptr;
+        d_derivatives = nullptr;
+        d_dy = nullptr;
     }
     
 }
@@ -84,14 +89,15 @@ Layer::~Layer() {
  */
 Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     input_ = input;
-    //Eigen::VectorXd ones = Eigen::VectorXd::Ones(20);
     if (dynamic_cast<GPUComputationContext*>(context_)) {
         // GPU path
         context_->copy_to_device(d_input_, input_);
+
         context_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
+        context_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
+
         context_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
         context_->copy_to_host(activations_, d_activations_, num_neurons_);
-        context_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
     }
     else {
         // CPU path
@@ -101,6 +107,8 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     has_valid_activations_ = true;
     return activations_;
 }
+
+
 
 /**
  * @brief Computes gradients for weights and biases based on backpropagated errors.
@@ -142,6 +150,10 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
 void Layer::update_parameters(const Eigen::MatrixXd& weight_grads,
     const Eigen::VectorXd& bias_grads, double scale) {
     context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
+
+    //Temporary fix, till updateParametersGPU gets created or updateParameters gets optimized
+    context_->copy_weights_to_device(d_weights_, weights_);
+    context_->copy_biases_to_device(d_biases_, biases_);
 }
 
 /**

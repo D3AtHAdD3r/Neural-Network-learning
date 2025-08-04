@@ -515,12 +515,8 @@ void GPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vect
 
 void GPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
     double alpha = 1.0, beta = 0.0;
-
-    //CHECK_CUDA(cudaMemset(d_z, 0, m * sizeof(double))); // Ensure clean slate
-
     CHECK_CUBLAS(cublasDgemv(cublasHandle, CUBLAS_OP_N, m, n, 
-        &alpha, d_weights, m, 
-        d_input, 1, &beta, d_z, 1));
+        &alpha, d_weights, m, d_input, 1, &beta, d_z, 1));
     alpha = 1.0;
     CHECK_CUBLAS(cublasDaxpy(cublasHandle, m, &alpha, d_biases, 1, d_z, 1));
 }

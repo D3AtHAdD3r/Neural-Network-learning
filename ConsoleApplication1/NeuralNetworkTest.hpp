@@ -138,7 +138,7 @@ public:
 public:
     void doStuff();
 
-private:
+public:
     /**
      * @brief Generates an XOR-like dataset for testing.
      * @param training_data Output vector for training data (input, target pairs)
