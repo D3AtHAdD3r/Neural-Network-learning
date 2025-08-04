@@ -5,6 +5,14 @@
 
 #include"GPUComputationContext.hpp"
 
+// CUDA kernel for element-wise multiplication
+__global__ void elementwise_multiply(const double* a, const double* b, double* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        c[idx] = a[idx] * b[idx];
+    }
+}
+
  //CUDA kernel for cross-entropy loss
 __global__ void crossEntropyLossKernel(const double* output, const double* target, double* loss, int n)
 {
@@ -586,5 +594,42 @@ void GPUComputationContext::debugPrint(const double* data, int num_inputs) {
     int blocks = (num_inputs + threads - 1) / threads;
     debugPrint_kernel << <blocks, threads >> > (data, num_inputs);
     cudaDeviceSynchronize();
-
 }
+
+void GPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas,
+    double* d_derivatives,
+    double* d_input,
+    Eigen::MatrixXd& weight_grads,
+    Eigen::VectorXd& bias_grads,
+    int m, int n) {
+
+    double* d_deltas;
+    CHECK_CUDA(cudaMalloc(&d_deltas, m * sizeof(double)));
+    CHECK_CUDA(cudaMemcpy(d_deltas, deltas.data(), m * sizeof(double), cudaMemcpyHostToDevice));
+
+    double* d_adjusted_deltas;
+    CHECK_CUDA(cudaMalloc(&d_adjusted_deltas, m * sizeof(double)));
+
+    int threads = 256;
+    int blocks = (m + threads - 1) / threads;
+    elementwise_multiply << <blocks, threads >> > (d_deltas, d_derivatives, d_adjusted_deltas, m);
+    CHECK_CUDA(cudaGetLastError());
+
+    double* d_weight_grads;
+    CHECK_CUDA(cudaMalloc(&d_weight_grads, m * n * sizeof(double)));
+    CHECK_CUDA(cudaMemset(d_weight_grads, 0, m * n * sizeof(double)));
+
+    double alpha = 1.0;
+    CHECK_CUBLAS(cublasDger(cublasHandle, m, n, &alpha, d_adjusted_deltas, 1, d_input, 1, d_weight_grads, m));
+
+    bias_grads.resize(m);
+    CHECK_CUDA(cudaMemcpy(bias_grads.data(), d_adjusted_deltas, m * sizeof(double), cudaMemcpyDeviceToHost));
+
+    weight_grads.resize(m, n);
+    CHECK_CUDA(cudaMemcpy(weight_grads.data(), d_weight_grads, m * n * sizeof(double), cudaMemcpyDeviceToHost));
+
+    CHECK_CUDA(cudaFree(d_deltas));
+    CHECK_CUDA(cudaFree(d_adjusted_deltas));
+    CHECK_CUDA(cudaFree(d_weight_grads));
+}
+

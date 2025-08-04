@@ -66,73 +66,28 @@ private:
     Eigen::VectorXd computeActivationDerivative(const Eigen::VectorXd& z) const;
 
 public:
-    /**
-     * @brief Tests Layer constructor for correct initialization.
-     */
     bool testLayerConstructor();
-
-    /**
-     * @brief Tests Layer forward pass for correct output and activation storage.
-     */
     bool testLayerForward();
-
-    /**
-     * @brief Tests Layer gradient computation.
-     */
     bool testLayerGradients();
-
-    /**
-     * @brief Tests Layer parameter updates.
-     */
     bool testLayerUpdateParameters();
-
-
     bool testLayerComputeActivationDerivative();
     bool testLayerComputeActivationDerivativeGPU();
 
 public:
     //new network tests
     bool testUpdateMiniBatchSimplified();
-
     bool testBackpropGradientComputation();
-
     bool testEvaluate();
 
 public:
-    /**
-     * @brief Tests Network constructor.
-     */
     void testNetworkConstructor();
-
-    /**
-     * @brief Tests Network feedforward.
-     */
     void testNetworkFeedforward();
-
-    /**
-     * @brief Tests Network backpropagation.
-     */
     void testNetworkBackprop();
-
-    /**
-     * @brief Tests Network SGD on an XOR-like dataset.
-     */
     void testNetworkSGD();
-
-    /**
-     * @brief Tests Network gradient checking to verify L2 regularization.
-     */
     void testNetworkGradientChecking();
-
-
-    // New Test for CPU vs GPU Consistency
     void testComputationContexts();
 
 public:
-    /**
-     * @brief Runs all tests and reports results.
-     * @return True if all tests passed, false otherwise
-     */
     bool runAllTests();
 
 public:

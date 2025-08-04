@@ -108,23 +108,6 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     return activations_;
 }
 
-
-
-/**
- * @brief Computes gradients for weights and biases based on backpropagated errors.
- * @param deltas Error terms from the next layer or cost function
- * @param weight_grads Output weight gradients (num_neurons x num_inputs)
- * @param bias_grads Output bias gradients (num_neurons)
- */
-//void Layer::compute_gradients(const Eigen::VectorXd& deltas,
-//    Eigen::MatrixXd& weight_grads,
-//    Eigen::VectorXd& bias_grads) const 
-//{
-//    Eigen::VectorXd activation_derives = context_->computeActivationDerivative(activations_, pre_activations_, activation_);
-//    context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
-//}
-
-
 void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     Eigen::MatrixXd& weight_grads,
     Eigen::VectorXd& bias_grads) const
@@ -132,7 +115,11 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     if (dynamic_cast<GPUComputationContext*>(context_)) {
         // GPU path
         Eigen::VectorXd activation_derives = context_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
-        context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+        context_->computeGradientsGPU(
+            deltas, d_derivatives, d_input_, 
+            weight_grads, bias_grads, 
+            num_neurons_, num_inputs_);
+        //context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
     }
     else {
         // CPU path

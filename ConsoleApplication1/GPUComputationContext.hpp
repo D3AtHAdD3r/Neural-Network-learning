@@ -112,6 +112,13 @@ public:
 
     Eigen::VectorXd computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) override;
 
+    void computeGradientsGPU(const Eigen::VectorXd& deltas,
+        double* d_derivatives,
+        double* d_input,
+        Eigen::MatrixXd& weight_grads,
+        Eigen::VectorXd& bias_grads,
+        int m, int n) override;
+
     //debug
     void debugPrint(const double* data, int n) override;
 };

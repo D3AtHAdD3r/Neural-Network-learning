@@ -137,6 +137,11 @@ Eigen::VectorXd CPUComputationContext::computeActivationDerivativeGPU(double* d_
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
 
+void CPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas, double* d_derivatives, double* d_input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, int m, int n) {
+	throw std::runtime_error("GPU operations not supported in CPU context");
+}
+
+
 void CPUComputationContext::debugPrint(const double* data, int n) {
 	throw std::runtime_error("GPU operations not supported in CPU context");
 }
