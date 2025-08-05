@@ -25,7 +25,7 @@ Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps pre
 */
 
 
-int main_asdasd() {
+int main() {
     // Example: [784, 30, 10] network
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -45,13 +45,15 @@ int main_asdasd() {
     Network netCPU(sizes, 0.001, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, &cpuContext);
     Network netGPU(sizes, 0.001, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, &gpuContext);
 
-    int epochs = 10;
+    int epochs = 5;
+    int mini_batch_size = 32;
+    double eta = 1.5;
 
     // Train both network-
     // Train with CPU context and time it
     std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
-    netCPU.SGD(training_data, epochs, 32, 1.5, &test_data, true);
+    netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
     std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
@@ -59,7 +61,7 @@ int main_asdasd() {
     // Train with GPU context and time it
     std::cout << "Training with Gpu context...\n";
     auto gpu_start = std::chrono::high_resolution_clock::now();
-    netGPU.SGD(training_data, epochs, 32, 1.5, &test_data, true);
+    netGPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto gpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> gpu_duration = gpu_end - gpu_start;
     std::cout << "GPU training completed in " << gpu_duration.count() << " seconds.\n";
@@ -87,7 +89,7 @@ int main_9867fg() {
 
 
 
-int main() {
+int main_56546() {
 
     // Default parameters
     NeuralNetworkTest tester;

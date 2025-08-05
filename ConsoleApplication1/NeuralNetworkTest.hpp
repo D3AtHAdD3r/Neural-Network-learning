@@ -78,11 +78,11 @@ public:
     bool testUpdateMiniBatchSimplified();
     bool testBackpropGradientComputation();
     bool testEvaluate();
+    bool testNetworkBackprop();
 
 public:
     void testNetworkConstructor();
     void testNetworkFeedforward();
-    void testNetworkBackprop();
     void testNetworkSGD();
     void testNetworkGradientChecking();
     void testComputationContexts();

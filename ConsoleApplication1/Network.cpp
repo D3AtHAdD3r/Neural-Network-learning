@@ -146,70 +146,46 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 }
 
 
-/**
- * @brief Computes gradients for a single training example using backpropagation.
- * @param x Input vector
- * @param y Target vector
- * @param n Number of training examples for L2 scaling
- * @return Pair of bias gradients and weight gradients for each layer
- */
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
+
     std::vector<Eigen::VectorXd> nabla_b(layers.size());
     std::vector<Eigen::MatrixXd> nabla_w(layers.size());
 
     // Initialize gradient vectors and matrices
     for (size_t i = 0; i < layers.size(); ++i) {
-        nabla_b[i] = Eigen::VectorXd::Zero(layers[i]->get_activations().size());
-        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i]->get_activations().size(), i == 0 ? x.size() : layers[i - 1]->get_activations().size());
+        nabla_b[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
+        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
     }
 
     // Forward pass
     Eigen::VectorXd activation = x;
     std::vector<Eigen::VectorXd> activations = { x };
-    std::vector<Eigen::VectorXd> zs;
-
     for (auto& layer : layers) {
         activation = layer->forward(activation);
-        zs.push_back(layer->get_pre_activations());
         activations.push_back(layer->get_activations());
     }
 
-    // Backward pass: Compute delta for the output layer
-    Eigen::VectorXd delta;
-    if (neuron_type_ == NeuronType::SIGMOID && (loss_type_ == LossType::MSE || loss_type_ == LossType::CROSS_ENTROPY)) {
-        Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
-        Eigen::VectorXd activation_deriv = context_->computeActivationDerivative(activations.back(), zs.back(), activation_.get());
-        delta = cost_deriv.cwiseProduct(activation_deriv); // Element-wise multiplication       
-    }
-    else {
-        throw std::runtime_error("Unsupported neuron type or loss function combination in backprop");
+    // Backward pass: Compute cost derivative for the output layer
+    Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
+
+    // Output layer gradients
+    size_t L = layers.size() - 1;
+    layers[L]->compute_gradients(cost_deriv, nabla_w[L], nabla_b[L]);
+    Eigen::VectorXd delta = nabla_b[L]; // delta[L]
+
+    // Hidden layer gradients
+    for (int l = L - 1; l >= 0; --l) {
+        Eigen::MatrixXd weights_next = layers[l + 1]->get_weights();
+        Eigen::VectorXd next_deltas = weights_next.transpose() * delta;
+        layers[l]->compute_gradients(next_deltas, nabla_w[l], nabla_b[l]);
+        delta = nabla_b[l]; // Update delta for the next layer
     }
 
-    // Assign gradients for the last layer
-    nabla_b.back() = delta;
-    nabla_w.back() = context_->computeWeightGradient(delta, activations[activations.size() - 2]);
-
+    // Apply L2 regularization to weight gradients
     if (lambda > 0.0 && n > 0) {
-        nabla_w.back() += (lambda / n) * layers[layers.size() - 1]->get_weights(); // Scaled L2
-    }
-
-
-    // Backward pass for hidden layers
-    for (int l = 2; l < num_layers; ++l) {
-        const Eigen::VectorXd& current_activations = activations[activations.size() - l];  // Activations of current layer
-        const Eigen::VectorXd& current_pre_activations = zs[zs.size() - l];  // Pre-activations of current layer
-
-        // Compute delta for the current layer
-        Eigen::VectorXd sp = context_->computeActivationDerivative(current_activations, current_pre_activations, activation_.get());
-        delta = context_->computeLinear(layers[layers.size() - l + 1]->get_weights().transpose(), delta, Eigen::VectorXd::Zero(sp.size())).cwiseProduct(sp);
-        
-        // Compute gradients
-        nabla_b[nabla_b.size() - l] = delta;
-        nabla_w[nabla_w.size() - l] = context_->computeWeightGradient(delta, activations[activations.size() - l - 1]);
-        
-        if (lambda > 0.0 && n > 0) {
-            nabla_w[nabla_w.size() - l] += (lambda / n) * layers[layers.size() - l]->get_weights(); // Scaled L2
+        for (size_t i = 0; i < layers.size(); ++i) {
+            nabla_w[i] += (lambda / n) * layers[i]->get_weights();
         }
     }
 

@@ -1293,31 +1293,184 @@ void NeuralNetworkTest::testNetworkFeedforward()
     std::cout << "Passed" << std::endl;
 }
 
-void NeuralNetworkTest::testNetworkBackprop()
-{
-    std::cout << "Running testNetworkBackprop... ";
+bool NeuralNetworkTest::testNetworkBackprop() {
+    std::cout << "----- Running testNetworkBackprop... -----\n";
     ++total_tests_;
-    Network net(network_sizes_);
+    bool all_passed = true;
+    std::string errorMsg;
+    std::map<std::string, std::vector<Eigen::MatrixXd>> nabla_w_map;
+    std::map<std::string, std::vector<Eigen::VectorXd>> nabla_b_map;
 
-    Eigen::VectorXd input(network_sizes_[0]);
-    input.setConstant(1.0);
-    Eigen::VectorXd target(network_sizes_.back());
-    target.setZero();
-    target(0) = 1.0;
+    // Network configuration: 2 input, 3 hidden, 2 output neurons
+    std::vector<int> sizes = { 2, 3, 2 };
+    unsigned int seed = 42;
+    Eigen::VectorXd x(2);
+    x << 0.5, 0.3; // Input vector
+    Eigen::VectorXd y(2);
+    y << 1.0, 0.0; // Target vector (one-hot for class 0)
+    size_t n = 2; // Number of training examples for L2 scaling (lambda = 0 here)
+    double TOL = 1e-6; // Tolerance for floating-point comparisons
 
-    auto [nabla_b, nabla_w] = net.backprop(input, target, 1);
+    // Predefined weights and biases for reproducibility
+    Eigen::MatrixXd weights1(3, 2); // Layer 1: 3 neurons x 2 inputs
+    weights1 << 0.15, 0.25,
+        0.20, 0.30,
+        0.35, 0.35;
+    Eigen::VectorXd biases1(3);
+    biases1 << 0.40, 0.45, 0.50;
 
-    assertTrue(nabla_b.size() == network_sizes_.size() - 1 && nabla_w.size() == network_sizes_.size() - 1,
-        "Incorrect gradient vector sizes", __FILE__, __LINE__);
+    Eigen::MatrixXd weights2(2, 3); // Layer 2: 2 neurons x 3 inputs
+    weights2 << 0.55, 0.60, 0.65,
+        0.70, 0.75, 0.80;
+    Eigen::VectorXd biases2(2);
+    biases2 << 0.85, 0.90;
 
-    for (size_t i = 0; i < nabla_b.size(); ++i) {
-        assertTrue(nabla_b[i].size() == network_sizes_[i + 1], "Incorrect bias gradient size", __FILE__, __LINE__);
-        assertTrue(nabla_w[i].rows() == network_sizes_[i + 1] && nabla_w[i].cols() == network_sizes_[i],
-            "Incorrect weight gradient size", __FILE__, __LINE__);
+    // Manual gradient calculations for verification
+    // Forward pass for Layer 1: z1 = W1 * x + b1
+    Eigen::VectorXd z1 = weights1 * x + biases1; // (3x2) * (2x1) + (3x1) = (3x1)
+    // z1 = [0.15*0.5 + 0.25*0.3 + 0.40, 0.20*0.5 + 0.30*0.3 + 0.45, 0.35*0.5 + 0.35*0.3 + 0.50]
+    //    = [0.075 + 0.075 + 0.40, 0.10 + 0.09 + 0.45, 0.175 + 0.105 + 0.50]
+    //    = [0.55, 0.64, 0.78]
+    Eigen::VectorXd a1 = 1.0 / (1.0 + (-z1.array()).exp()); // Sigmoid activation
+    // a1 = [sigmoid(0.55), sigmoid(0.64), sigmoid(0.78)]
+    //    ? [0.634135, 0.654753, 0.685834]
+
+    // Forward pass for Layer 2: z2 = W2 * a1 + b2
+    Eigen::VectorXd z2 = weights2 * a1 + biases2; // (2x3) * (3x1) + (2x1)
+    Eigen::VectorXd a2 = 1.0 / (1.0 + (-z2.array()).exp()); // Sigmoid activation
+    // Compute numerically after a1 is exact
+
+    // Backward pass: Output layer (L=2)
+    Eigen::VectorXd cost_deriv = a2 - y; // MSE loss derivative: a2 - y
+    Eigen::VectorXd sigma_prime_z2 = a2.array() * (1.0 - a2.array()); // Sigmoid derivative
+    Eigen::VectorXd delta2 = cost_deriv.cwiseProduct(sigma_prime_z2); // delta2 = (a2 - y) .* sigmoid'(z2)
+    Eigen::MatrixXd nabla_w2_manual = delta2 * a1.transpose(); // nabla_w2 = delta2 * a1^T
+    Eigen::VectorXd nabla_b2_manual = delta2; // nabla_b2 = delta2
+
+    // Backward pass: Hidden layer (L=1)
+    Eigen::VectorXd sigma_prime_z1 = a1.array() * (1.0 - a1.array()); // Sigmoid derivative
+    Eigen::VectorXd delta1 = (weights2.transpose() * delta2).cwiseProduct(sigma_prime_z1);
+    Eigen::MatrixXd nabla_w1_manual = delta1 * x.transpose(); // nabla_w1 = delta1 * x^T
+    Eigen::VectorXd nabla_b1_manual = delta1; // nabla_b1 = delta1
+
+    // Store manual gradients
+    std::vector<Eigen::MatrixXd> nabla_w_manual = { nabla_w1_manual, nabla_w2_manual };
+    std::vector<Eigen::VectorXd> nabla_b_manual = { nabla_b1_manual, nabla_b2_manual };
+
+    // Test both CPU and GPU contexts
+    for (auto context : computeContexts) {
+        std::string contextName = dynamic_cast<CPUComputationContext*>(context) ? "CPUContext" : "GPUContext";
+        std::cout << "Test: " << contextName << "\n";
+
+        // Initialize network with fixed weights and biases
+        Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, context, seed);
+        net.set_layer_weights(0, weights1);
+        net.set_layer_biases(0, biases1);
+        net.set_layer_weights(1, weights2);
+        net.set_layer_biases(1, biases2);
+
+        // Run backpropagation
+        auto [nabla_b, nabla_w] = net.backprop(x, y, n);
+
+        // Verify gradient sizes
+        errorMsg = contextName + ": Incorrect number of gradient vectors";
+        assertTrue(nabla_b.size() == sizes.size() - 1 && nabla_w.size() == sizes.size() - 1,
+            errorMsg, __FILE__, __LINE__);
+        for (size_t i = 0; i < nabla_b.size(); ++i) {
+            errorMsg = contextName + ": Incorrect bias gradient size in layer " + std::to_string(i);
+            assertTrue(nabla_b[i].size() == sizes[i + 1], errorMsg, __FILE__, __LINE__);
+            errorMsg = contextName + ": Incorrect weight gradient size in layer " + std::to_string(i);
+            assertTrue(nabla_w[i].rows() == sizes[i + 1] && nabla_w[i].cols() == sizes[i],
+                errorMsg, __FILE__, __LINE__);
+        }
+
+        // Compare with manual calculations
+        std::cout << "Comparing " << contextName << " with manual calculations\n";
+        bool layer_passed = true;
+        for (size_t i = 0; i < nabla_b.size(); ++i) {
+            // Compare bias gradients
+            for (int j = 0; j < nabla_b[i].size(); ++j) {
+                double diff = std::abs(nabla_b[i](j) - nabla_b_manual[i](j));
+                errorMsg = contextName + ": Bias gradient mismatch in layer " + std::to_string(i) + " at index " + std::to_string(j);
+                if (diff > TOL) {
+                    std::cerr << errorMsg << ": " << nabla_b[i](j) << " vs manual " << nabla_b_manual[i](j)
+                        << " (diff = " << diff << ")\n";
+                    assertApprox(nabla_b[i](j), nabla_b_manual[i](j), TOL, errorMsg, __FILE__, __LINE__);
+                    layer_passed = false;
+                    all_passed = false;
+                }
+            }
+            // Compare weight gradients
+            for (int r = 0; r < nabla_w[i].rows(); ++r) {
+                for (int c = 0; c < nabla_w[i].cols(); ++c) {
+                    double diff = std::abs(nabla_w[i](r, c) - nabla_w_manual[i](r, c));
+                    errorMsg = contextName + ": Weight gradient mismatch in layer " + std::to_string(i) + " at (" + std::to_string(r) + "," + std::to_string(c) + ")";
+                    if (diff > TOL) {
+                        std::cerr << errorMsg << ": " << nabla_w[i](r, c) << " vs manual " << nabla_w_manual[i](r, c)
+                            << " (diff = " << diff << ")\n";
+                        assertApprox(nabla_w[i](r, c), nabla_w_manual[i](r, c), TOL, errorMsg, __FILE__, __LINE__);
+                        layer_passed = false;
+                        all_passed = false;
+                    }
+                }
+            }
+        }
+
+        nabla_b_map[contextName] = nabla_b;
+        nabla_w_map[contextName] = nabla_w;
+
+        // Print gradients for debugging
+        std::cout << std::fixed << std::setprecision(6);
+        for (size_t i = 0; i < nabla_w.size(); ++i) {
+            std::cout << "Layer " << i << " Weight Gradients (" << contextName << "):\n" << nabla_w[i] << "\n";
+            std::cout << "Layer " << i << " Bias Gradients (" << contextName << "): " << nabla_b[i].transpose() << "\n";
+            std::cout << "Layer " << i << " Weight Gradients (Manual):\n" << nabla_w_manual[i] << "\n";
+            std::cout << "Layer " << i << " Bias Gradients (Manual): " << nabla_b_manual[i].transpose() << "\n";
+        }
+        std::cout << "Test: " << contextName << (layer_passed ? " Passed" : " Failed") << "\n\n";
     }
 
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
+    // Compare CPU and GPU gradients
+    std::cout << "Test: Compare CPU and GPU gradients\n";
+    bool cpu_gpu_passed = true;
+    for (size_t i = 0; i < sizes.size() - 1; ++i) {
+        // Compare weight gradients
+        for (int r = 0; r < nabla_w_map["CPUContext"][i].rows(); ++r) {
+            for (int c = 0; c < nabla_w_map["CPUContext"][i].cols(); ++c) {
+                double diff = std::abs(nabla_w_map["CPUContext"][i](r, c) - nabla_w_map["GPUContext"][i](r, c));
+                errorMsg = "CPU-GPU weight gradient mismatch in layer " + std::to_string(i) + " at (" + std::to_string(r) + "," + std::to_string(c) + ")";
+                if (diff > TOL) {
+                    std::cerr << errorMsg << ": " << nabla_w_map["CPUContext"][i](r, c) << " vs "
+                        << nabla_w_map["GPUContext"][i](r, c) << " (diff = " << diff << ")\n";
+                    assertApprox(nabla_w_map["CPUContext"][i](r, c), nabla_w_map["GPUContext"][i](r, c), TOL, errorMsg, __FILE__, __LINE__);
+                    cpu_gpu_passed = false;
+                    all_passed = false;
+                }
+            }
+        }
+        // Compare bias gradients
+        for (int j = 0; j < nabla_b_map["CPUContext"][i].size(); ++j) {
+            double diff = std::abs(nabla_b_map["CPUContext"][i](j) - nabla_b_map["GPUContext"][i](j));
+            errorMsg = "CPU-GPU bias gradient mismatch in layer " + std::to_string(i) + " at index " + std::to_string(j);
+            if (diff > TOL) {
+                std::cerr << errorMsg << ": " << nabla_b_map["CPUContext"][i](j) << " vs "
+                    << nabla_b_map["GPUContext"][i](j) << " (diff = " << diff << ")\n";
+                assertApprox(nabla_b_map["CPUContext"][i](j), nabla_b_map["GPUContext"][i](j), TOL, errorMsg, __FILE__, __LINE__);
+                cpu_gpu_passed = false;
+                all_passed = false;
+            }
+        }
+    }
+    std::cout << "Test: Compare CPU and GPU " << (cpu_gpu_passed ? "Passed" : "Failed") << "\n\n";
+
+    if (all_passed) {
+        ++passed_tests_;
+        std::cout << "----- testNetworkBackprop Passed -----\n\n";
+    }
+    else {
+        std::cout << "----- testNetworkBackprop Failed -----\n\n";
+    }
+    return all_passed;
 }
 
 /**
@@ -1584,10 +1737,10 @@ bool NeuralNetworkTest::runAllTests()
     //testLayerConstructor();
     //testLayerForward();
     //testLayerGradients();
-    testLayerUpdateParameters();
+    //testLayerUpdateParameters();
     //testNetworkConstructor();
     //testNetworkFeedforward();
-    //testNetworkBackprop();
+    testNetworkBackprop();
     //testNetworkSGD();
     //testNetworkGradientChecking();
     //testComputationContexts();
