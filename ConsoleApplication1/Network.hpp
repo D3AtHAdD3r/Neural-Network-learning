@@ -81,6 +81,15 @@ private:
     double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:
+    //Temporary helpers for cuda operations
+    
+    //Returns dynamic created pointers, cleanup is upto callers
+    std::vector<double*> createDeviceVectors(const std::vector<Eigen::VectorXd>& vec);
+    std::vector<double*> createDeviceMatrices(const std::vector<Eigen::MatrixXd>& mat);
+
+    void freeDevicePointers(std::vector<double*>& d_pointers);
+
+private:
     int num_layers;                                 ///< Number of layers
     std::vector<int> sizes;                         ///< Sizes of each layer
     std::vector<std::unique_ptr<Layer>> layers;     ///< Layers of the network
@@ -92,6 +101,15 @@ private:
     std::unique_ptr<Activation> activation_;        ///< Dynamic activation instance
     ComputationContext* context_;                   // Raw pointer
     bool owns_context_;                             // Flag to track ownership
+
+private:
+    //GPU storage pointers
+    std::vector<double*> accumulate_weight_grads;
+    std::vector<double*> accumulate_bias_grads;
+    //storage dimensions
+    std::vector<int> weight_rows;
+    std::vector<int> weight_cols;
+    std::vector<int> bias_sizes;
 };
 
 #endif

@@ -1740,11 +1740,11 @@ bool NeuralNetworkTest::runAllTests()
     //testLayerUpdateParameters();
     //testNetworkConstructor();
     //testNetworkFeedforward();
-    testNetworkBackprop();
+    //testNetworkBackprop();
     //testNetworkSGD();
     //testNetworkGradientChecking();
     //testComputationContexts();
-    //testUpdateMiniBatchSimplified(); 
+    testUpdateMiniBatchSimplified(); 
     //testBackpropGradientComputation();
     //testEvaluate();
     //doStuff();

@@ -72,18 +72,38 @@ public:
     virtual void allocate_vector(double** d_vector, int size) = 0;
     virtual void free_vector(double* d_vector) = 0;
     virtual void copy_to_device(double* d_vector, const Eigen::VectorXd& vector) = 0;
+    virtual void copy_to_device(double* d_matrix, const Eigen::MatrixXd& matrix) = 0;
     virtual void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) = 0;
     virtual void copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) =0;
     virtual void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) = 0;
     virtual void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) = 0;
 
     virtual Eigen::VectorXd computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) = 0;
-    virtual void computeGradientsGPU(const Eigen::VectorXd& deltas, double* d_derivatives, double* d_input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, int m, int n) = 0;
-    virtual void updateParametersGPU(double* d_weights,
+    
+    virtual void computeGradientsGPU(
+            const Eigen::VectorXd& deltas, 
+            double* d_derivatives, 
+            double* d_input, 
+            double* weight_grads, 
+            double* bias_grads, 
+            int m, int n) = 0;
+
+    virtual void updateParametersGPU(
+            double* d_weights,
             double* d_biases,
-            const Eigen::MatrixXd& weight_grads,
-            const Eigen::VectorXd& bias_grads,
+            double* weight_grads,
+            double* bias_grads,
             int m, int n, int bias_size, double scale) = 0;
+
+    virtual void accumulateGradientsGPU(
+        const std::vector<double*>& weight_grads_in,
+        const std::vector<double*>& bias_grads_in,
+        const std::vector<double*>& weight_grads_out,
+        const std::vector<double*>& bias_grads_out,
+        const std::vector<int>& weight_rows,
+        const std::vector<int>& weight_cols,
+        const std::vector<int>& bias_sizes,
+        double scale) = 0;
     
     virtual void debugPrint(const double* data, int n) = 0;
 }; 

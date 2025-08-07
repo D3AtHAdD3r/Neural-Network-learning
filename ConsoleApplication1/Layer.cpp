@@ -21,7 +21,8 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
     pre_activations_(num_neurons), input_(num_inputs),
     rng_(seed), has_valid_activations_(false), d_pre_activations_(nullptr), activation_(activation),
     context_(context), d_weights_(nullptr), d_biases_(nullptr), 
-    d_input_(nullptr), d_derivatives(nullptr), d_dy(nullptr){
+    d_input_(nullptr), d_derivatives(nullptr), d_dy(nullptr), 
+    d_weight_grads_(nullptr), d_bias_grads_(nullptr) {
 
     // Xavier initialization
     double stddev = std::sqrt(2.0 / (num_inputs + 1));
@@ -42,15 +43,25 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
         context_->allocate_vector(&d_activations_, num_neurons_);
         context_->allocate_vector(&d_derivatives, num_neurons_);
         context_->allocate_vector(&d_dy, num_neurons_);
-
         context_->allocate_weights(&d_weights_, num_neurons, num_inputs);
         context_->allocate_biases(&d_biases_, num_neurons);
+        context_->allocate_weights(&d_weight_grads_, num_neurons, num_inputs); // Allocate gradient storage
+        context_->allocate_biases(&d_bias_grads_, num_neurons);              // Allocate gradient storage
+
         context_->copy_weights_to_device(d_weights_, weights_);
         context_->copy_biases_to_device(d_biases_, biases_);
 
         // Initialize dy with ones (to compute raw derivative, not scaled by deltas) 
         Eigen::VectorXd ones = Eigen::VectorXd::Ones(num_neurons_);
         context_->copy_to_device(d_dy, ones);
+
+        // Initialize gradient storage to zero
+        Eigen::MatrixXd zero_weights(num_neurons, num_inputs);
+        Eigen::VectorXd zero_biases(num_neurons);
+        zero_weights.setZero();
+        zero_biases.setZero();
+        context_->copy_weights_to_device(d_weight_grads_, zero_weights);
+        context_->copy_biases_to_device(d_bias_grads_, zero_biases);
     }
     
 }
@@ -117,9 +128,12 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
         Eigen::VectorXd activation_derives = context_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
         context_->computeGradientsGPU(
             deltas, d_derivatives, d_input_, 
-            weight_grads, bias_grads, 
+            d_weight_grads_, d_bias_grads_, 
             num_neurons_, num_inputs_);
-        //context_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
+
+        //copy gradients to host
+        context_->copy_weights_to_host(weight_grads, d_weight_grads_, num_neurons_, num_inputs_);
+        context_->copy_biases_to_host(bias_grads, d_bias_grads_, num_neurons_);
     }
     else {
         // CPU path
@@ -128,23 +142,59 @@ void Layer::compute_gradients(const Eigen::VectorXd& deltas,
     }
 }
 
-void Layer::update_parameters(const Eigen::MatrixXd& weight_grads,
-    const Eigen::VectorXd& bias_grads, double scale) {
+//void Layer::update_parameters(
+//    const Eigen::MatrixXd& weight_grads,
+//    const Eigen::VectorXd& bias_grads, 
+//    double* accumulate_weight_grads,
+//    double* accumulate_bias_grads, 
+//    double scale) {
+//
+//    if (dynamic_cast<GPUComputationContext*>(context_)) {
+//        if (!accumulate_weight_grads || !accumulate_bias_grads) {
+//            //TODO: throw error
+//        }
+//        context_->updateParametersGPU(
+//            d_weights_, d_biases_,
+//            accumulate_weight_grads, accumulate_bias_grads,
+//            num_neurons_, num_inputs_, num_neurons_, scale
+//        );
+//
+//        // Update host weights and biases for compatibility
+//        context_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
+//        context_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
+//    }
+//    else {
+//        context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
+//    }
+//}
 
-    if (dynamic_cast<GPUComputationContext*>(context_)) {
-        context_->updateParametersGPU(
-            d_weights_, d_biases_,
-            weight_grads, bias_grads,
-            num_neurons_, num_inputs_, num_neurons_, scale
-        );
+//CPU variant
+void Layer::update_parameters(
+    const Eigen::MatrixXd& weight_grads,
+    const Eigen::VectorXd& bias_grads,
+    double scale) {
+    //TODO: error check
+    context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
+}
 
-        // Update host weights and biases for compatibility
-        context_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
-        context_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
+//GPU variant
+void Layer::update_parameters(
+    double* accumulate_weight_grads,
+    double* accumulate_bias_grads,
+    double scale) {
+
+    if (!accumulate_weight_grads || !accumulate_bias_grads) {
+        //TODO: throw error
     }
-    else {
-        context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
-    }
+    context_->updateParametersGPU(
+        d_weights_, d_biases_,
+        accumulate_weight_grads, accumulate_bias_grads,
+        num_neurons_, num_inputs_, num_neurons_, scale
+    );
+
+    // Update host weights and biases for compatibility
+    context_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
+    context_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
 }
 
 /**

@@ -62,8 +62,22 @@ public:
 	 * @param weight_grads Weight gradients (num_neurons x num_inputs)
 	 * @param bias_grads Bias gradients (num_neurons)
 	 */
-	void update_parameters(const Eigen::MatrixXd& weight_grads,
-		const Eigen::VectorXd& bias_grads, double scale = 1.0);
+	/*void update_parameters(
+		const Eigen::MatrixXd& weight_grads,
+		const Eigen::VectorXd& bias_grads, 
+		double* accumulate_weight_grads, 
+		double* accumulate_bias_grads, 
+		double scale = 1.0);*/
+
+	void update_parameters(
+		const Eigen::MatrixXd& weight_grads,
+		const Eigen::VectorXd& bias_grads, 
+		double scale = 1.0);
+
+	void update_parameters(
+		double* accumulate_weight_grads,
+		double* accumulate_bias_grads,
+		double scale = 1.0);
 
 	/**
 	 * @brief Prints layer parameters (weights, biases, activations).
@@ -113,6 +127,8 @@ private:
 	double* d_activations_;
 	double* d_derivatives;
 	double* d_dy;
+	double* d_weight_grads_;            ///< GPU pointer for weight gradients
+	double* d_bias_grads_;             ///< GPU pointer for bias gradients
 };
 
 #endif // LAYER_HPP

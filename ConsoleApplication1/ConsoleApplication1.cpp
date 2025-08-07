@@ -25,7 +25,7 @@ Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps pre
 */
 
 
-int main() {
+int main_445() {
     // Example: [784, 30, 10] network
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -89,7 +89,7 @@ int main_9867fg() {
 
 
 
-int main_56546() {
+int main() {
 
     // Default parameters
     NeuralNetworkTest tester;
