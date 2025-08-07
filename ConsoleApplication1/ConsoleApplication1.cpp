@@ -25,7 +25,7 @@ Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps pre
 */
 
 
-int main_445() {
+int main() {
     // Example: [784, 30, 10] network
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -51,12 +51,12 @@ int main_445() {
 
     // Train both network-
     // Train with CPU context and time it
-    std::cout << "Training with Cpu context...\n";
+    /*std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
     netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
-    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
+    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";*/
 
     // Train with GPU context and time it
     std::cout << "Training with Gpu context...\n";
@@ -89,7 +89,7 @@ int main_9867fg() {
 
 
 
-int main() {
+int main_43534() {
 
     // Default parameters
     NeuralNetworkTest tester;

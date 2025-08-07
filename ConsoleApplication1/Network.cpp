@@ -58,7 +58,7 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
 
             weight_rows.push_back(layers[i]->get_num_neurons());
             weight_cols.push_back(layers[i]->get_num_inputs());
-            bias_sizes.push_back(layers[i]->get_num_inputs());
+            bias_sizes.push_back(layers[i]->get_num_neurons());
         }
     }
 
@@ -143,37 +143,6 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     }
 }
 
-
-//double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
-//    if (mini_batch.empty()) return 0.0;
-//
-//    std::vector<Eigen::MatrixXd> weight_grads;
-//    std::vector<Eigen::VectorXd> bias_grads;
-//    for (size_t i = 0; i < layers.size(); ++i) {
-//        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
-//        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
-//    }
-//
-//    for (const auto& [x, y] : mini_batch) {
-//        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-//        context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
-//    }
-//
-//    double norm = 0.0;
-//    for (size_t i = 0; i < layers.size(); ++i) {
-//        norm += bias_grads[i].squaredNorm();
-//        norm += weight_grads[i].squaredNorm();
-//    }
-//    norm = std::sqrt(norm / mini_batch.size());
-//
-//    double scale = eta / mini_batch.size();
-//    for (size_t i = 0; i < layers.size(); ++i) {
-//        layers[i]->update_parameters(weight_grads[i], bias_grads[i], scale);
-//    }
-//
-//    return norm;
-//}
-
 double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
     if (mini_batch.empty()) return 0.0;
     double norm = 0.0;
@@ -215,7 +184,6 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         }
 
         //TODO: Calculate the norm on GPU 
-        norm = 0.0;
         for (size_t i = 0; i < layers.size(); ++i) {
             norm += bias_grads[i].squaredNorm();
             norm += weight_grads[i].squaredNorm();
@@ -229,18 +197,11 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         }
     }
     else {
-        //cpu context
-        /*for (size_t i = 0; i < layers.size(); ++i) {
-            weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
-            bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
-        }*/
-
         for (const auto& [x, y] : mini_batch) {
             auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
             context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
         }
 
-        double norm = 0.0;
         for (size_t i = 0; i < layers.size(); ++i) {
             norm += bias_grads[i].squaredNorm();
             norm += weight_grads[i].squaredNorm();
