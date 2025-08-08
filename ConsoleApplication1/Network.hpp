@@ -90,6 +90,11 @@ private:
     void freeDevicePointers(std::vector<double*>& d_pointers);
 
 private:
+    //Helpers
+    bool is_correct_prediction(const Eigen::VectorXd& output, int label);
+    bool is_correct_prediction(const Eigen::VectorXd& output, const Eigen::VectorXd& target);
+
+private:
     int num_layers;                                 ///< Number of layers
     std::vector<int> sizes;                         ///< Sizes of each layer
     std::vector<std::unique_ptr<Layer>> layers;     ///< Layers of the network

@@ -34,8 +34,8 @@ int main() {
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
     // Load smaller dataset for testing
-    auto training_data = load_mnist_training(train_images, train_labels, 5000);
-    auto test_data = load_mnist_test(test_images, test_labels, 1000);
+    auto training_data = load_mnist_training(train_images, train_labels, 15000);
+    auto test_data = load_mnist_test(test_images, test_labels, 3000);
 
     // Create CPU and GPU computation contexts
     CPUComputationContext cpuContext;
@@ -45,18 +45,18 @@ int main() {
     Network netCPU(sizes, 0.001, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, &cpuContext);
     Network netGPU(sizes, 0.001, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, &gpuContext);
 
-    int epochs = 5;
+    int epochs = 7;
     int mini_batch_size = 32;
     double eta = 1.5;
 
     // Train both network-
     // Train with CPU context and time it
-    /*std::cout << "Training with Cpu context...\n";
+    std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
     netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
-    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";*/
+    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
 
     // Train with GPU context and time it
     std::cout << "Training with Gpu context...\n";
@@ -89,7 +89,7 @@ int main_9867fg() {
 
 
 
-int main_43534() {
+int main_23232() {
 
     // Default parameters
     NeuralNetworkTest tester;

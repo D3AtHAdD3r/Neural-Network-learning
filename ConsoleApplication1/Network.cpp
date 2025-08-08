@@ -282,8 +282,9 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
     for (const auto& [x, y] : test_data) {
         Eigen::VectorXd output = feedforward(x);
-        int predicted = std::distance(output.data(), std::max_element(output.data(), output.data() + output.size()));
-        if (predicted == y) ++correct;
+
+        if (is_correct_prediction(output, y))
+            ++correct;
 
         Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
         target(y) = 1.0; // One-hot encoding for target label
@@ -294,6 +295,9 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
         else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {       
             total_loss += context_->compute_cross_entropy_loss(output, target);
+        }
+        else {
+            throw std::runtime_error("Unsupported loss type");
         }
     }
     if (lambda > 0.0 && n > 0) {
@@ -311,18 +315,14 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
 
     double weight_norm = 0.0;
     for (const auto& layer : layers) {
-        //weight_norm += layer.get_weights().squaredNorm();
         weight_norm += context_->compute_squared_norm(layer->get_weights());
     }
 
     for (const auto& [x, y] : test_data) {
         Eigen::VectorXd output = feedforward(x);
-        // Convert one-hot target to label by finding the index of the maximum value
-        Eigen::Index predicted;
-        output.maxCoeff(&predicted);
-        Eigen::Index target_label;
-        y.maxCoeff(&target_label);
-        if (predicted == target_label) ++correct;
+
+        if (is_correct_prediction(output, y))
+            ++correct;
 
         //TODO: add a switch here
         if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
@@ -330,6 +330,9 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
         else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
             total_loss += context_->compute_cross_entropy_loss(output, y);
+        }
+        else {
+            throw std::runtime_error("Unsupported loss type");
         }
     }
 
@@ -604,4 +607,20 @@ std::vector<double*> Network::createDeviceMatrices(const std::vector<Eigen::Matr
 
 void Network::freeDevicePointers(std::vector<double*>& d_pointers) {
 
+    for (auto& d_mem : d_pointers) {
+        context_->free_vector(d_mem);
+    }
+}
+
+bool Network::is_correct_prediction(const Eigen::VectorXd& output, int label) {
+    Eigen::Index predicted;
+    output.maxCoeff(&predicted);
+    return predicted == static_cast<Eigen::Index>(label);
+}
+
+bool Network::is_correct_prediction(const Eigen::VectorXd& output, const Eigen::VectorXd& target) {
+    Eigen::Index predicted, actual;
+    output.maxCoeff(&predicted);
+    target.maxCoeff(&actual);
+    return predicted == actual;
 }

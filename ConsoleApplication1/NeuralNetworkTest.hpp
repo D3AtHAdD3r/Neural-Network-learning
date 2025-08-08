@@ -66,6 +66,9 @@ private:
     Eigen::VectorXd computeActivationDerivative(const Eigen::VectorXd& z) const;
 
 public:
+    //Outdated
+
+public:
     bool testLayerConstructor();
     bool testLayerForward();
     bool testLayerGradients();
