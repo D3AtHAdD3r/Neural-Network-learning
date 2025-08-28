@@ -48,32 +48,37 @@ public:
 	Eigen::VectorXd forward(const Eigen::VectorXd& input);
 
 	/**
-	 * @brief Computes gradients for weights and biases.
+	 * @brief Computes gradients for weights and biases (CPU variant).
 	 * @param deltas Error terms from the next layer or cost function
 	 * @param weight_grads Output weight gradients (num_neurons x num_inputs)
 	 * @param bias_grads Output bias gradients (num_neurons)
 	 */
+	void compute_gradients_cpu(const Eigen::VectorXd& deltas,
+		Eigen::MatrixXd& weight_grads,
+		Eigen::VectorXd& bias_grads) const;
+
+	/**
+	 * @brief Computes gradients for weights and biases (GPU variant; caches on device).
+	 * @param deltas Error terms (host; empty if already on device)
+	 */
+	void compute_gradients_gpu(const Eigen::VectorXd& deltas);
+
+	// Wrapper to dispatch
 	void compute_gradients(const Eigen::VectorXd& deltas,
 		Eigen::MatrixXd& weight_grads,
 		Eigen::VectorXd& bias_grads) const;
 
 	/**
-	 * @brief Updates weights and biases using pre-computed gradients.
-	 * @param weight_grads Weight gradients (num_neurons x num_inputs)
-	 * @param bias_grads Bias gradients (num_neurons)
+	 * @brief Updates weights and biases using pre-computed gradients (CPU).
 	 */
-	/*void update_parameters(
-		const Eigen::MatrixXd& weight_grads,
-		const Eigen::VectorXd& bias_grads, 
-		double* accumulate_weight_grads, 
-		double* accumulate_bias_grads, 
-		double scale = 1.0);*/
-
 	void update_parameters(
 		const Eigen::MatrixXd& weight_grads,
 		const Eigen::VectorXd& bias_grads, 
 		double scale = 1.0);
 
+	/**
+	 * @brief Updates weights and biases using device gradients (GPU).
+	 */
 	void update_parameters(
 		double* accumulate_weight_grads,
 		double* accumulate_bias_grads,
@@ -85,6 +90,9 @@ public:
 	 * @return String representation of parameters
 	 */
 	std::string print_parameters(bool json_format = false) const;
+
+	// New GPU helper: Apply derivative elementwise on device
+	void apply_derivative_gpu(double* d_delta);
 
 
 public:
@@ -102,6 +110,8 @@ public:
 	double* get_d_biases() const { return d_biases_; }
 	double* get_d_derivatives() const { return d_derivatives; }
 	double* get_d_dy() const { return d_dy; }
+	double* get_d_weight_grads_() const { return d_weight_grads_; }  // New
+	double* get_d_bias_grads_() const { return d_bias_grads_; }      // New
 
 	void set_weights(const Eigen::MatrixXd& weights);
 	void set_biases(const Eigen::VectorXd& biases);
@@ -120,6 +130,9 @@ private:
 	bool has_valid_activations_;        ///< Tracks if activations are valid
 	const Activation* activation_;      ///< Pointer to activation function (owned externally)
 	ComputationContext* context_;       ///< Computation context for operations
+	GPUComputationContext* contextGPU_ = nullptr;
+	CPUComputationContext* contextCPU_ = nullptr;
+	bool is_gpu_context_;               // New: Cached flag
 	double* d_weights_;                 ///< GPU pointer for weights
 	double* d_biases_;                  ///< GPU pointer for biases
 	double* d_input_;

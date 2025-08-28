@@ -1606,56 +1606,6 @@ void NeuralNetworkTest::testNetworkGradientChecking()
     std::cout << "Passed" << std::endl;
 }
 
-
-//void NeuralNetworkTest::testComputationContexts()
-//{
-//    std::cout << "Running testComputationContexts... ";
-//    ++total_tests_;
-//
-//    // Define XOR dataset
-//    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data = {
-//       {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
-//       {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)},
-//       {Eigen::VectorXd::Unit(2, 1), Eigen::VectorXd::Unit(2, 1)},
-//       {Eigen::VectorXd::Ones(2), Eigen::VectorXd::Zero(2)}
-//    };
-//
-//    // Define network architecture
-//    std::vector<int> sizes = { 2, 3, 2 };
-//
-//    // Create CPU and GPU computation contexts
-//    CPUComputationContext cpuContext;
-//    GPUComputationContext gpuContext;
-//
-//    // Create networks with CPU and GPU contexts
-//    Network netCPU(sizes, 0.001, Network::LossType::MSE, Network::NeuronType::SIGMOID, &cpuContext, 42);
-//    Network netGPU(sizes, 0.001, Network::LossType::MSE, Network::NeuronType::SIGMOID, &gpuContext, 42);
-//
-//    // Train both networks
-//    netCPU.SGD(training_data, 1000, 1, 0.1, nullptr, false);
-//    netGPU.SGD(training_data, 1000, 1, 0.1, nullptr, false);
-//
-//    // Evaluate both networks
-//    double cpuLoss = netCPU.evaluate(training_data, training_data.size()).second;
-//    double gpuLoss = netGPU.evaluate(training_data, training_data.size()).second;
-//
-//    // Check if losses are approximately equal
-//    assertApprox(cpuLoss, gpuLoss, 1e-1, "Losses differ between CPU and GPU", __FILE__, __LINE__);
-//
-//    // Check predictions
-//    for (const auto& data : training_data) {
-//        Eigen::VectorXd cpuOutput = netCPU.feedforward(data.first);
-//        Eigen::VectorXd gpuOutput = netGPU.feedforward(data.first);
-//        for (int i = 0; i < cpuOutput.size(); ++i) {
-//            assertApprox(cpuOutput(i), gpuOutput(i), TOL, "Outputs differ between CPU and GPU", __FILE__, __LINE__);
-//        }
-//    }
-//
-//    ++passed_tests_;
-//    std::cout << "Passed" << std::endl;
-//}
-
-
 void NeuralNetworkTest::testComputationContexts() {
     std::cout << "Running testComputationContexts... ";
     ++total_tests_;
@@ -1797,7 +1747,7 @@ bool NeuralNetworkTest::runAllTests()
     //testLayerUpdateParameters();
     //testNetworkConstructor();
     //testNetworkFeedforward();
-    //testNetworkBackprop();
+    testNetworkBackprop();
     //testNetworkSGD();
     //testNetworkGradientChecking();
     //testComputationContexts();

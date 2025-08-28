@@ -15,10 +15,19 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
     sizes(sizes), num_layers(sizes.size()), 
     rng(seed), last_test_loss(0.0), lambda(lambda), 
     loss_type_(loss_type), neuron_type_(neuron_type), 
-    context_(context), owns_context_(context == nullptr) {
+    context_(context), owns_context_(context == nullptr), 
+    is_gpu_context_(dynamic_cast<GPUComputationContext*>(context_) != nullptr) {
 
     if (!context_) {
         context_ = new CPUComputationContext();
+        is_gpu_context_ = false;
+    }
+
+    if (is_gpu_context_) {
+        contextGPU_ = dynamic_cast<GPUComputationContext*>(context_);
+    }
+    else {
+        contextCPU_ = dynamic_cast<CPUComputationContext*>(context_);
     }
 
     // Dynamically create activation based on neuron_type
@@ -37,21 +46,21 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
     }
 
     //Initialize GPU storage pointers if gpu context
-    if (dynamic_cast<GPUComputationContext*>(context_)) {
+    if (is_gpu_context_) {
       
         //Initialize device memory pointers
         for (size_t i = 0; i < sizes.size() - 1; ++i) {
             double* weightGrad_currentLayer = nullptr;
             double* biasGrad_currentLayer = nullptr;
 
-            context_->allocate_weights(&weightGrad_currentLayer, layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-            context->allocate_biases(&biasGrad_currentLayer, layers[i]->get_num_neurons());
+            contextGPU_->allocate_weights(&weightGrad_currentLayer, layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            contextGPU_->allocate_biases(&biasGrad_currentLayer, layers[i]->get_num_neurons());
 
             Eigen::MatrixXd zeroMatrix = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
             Eigen::VectorXd zeroVec = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
 
-            context->copy_to_device(weightGrad_currentLayer, zeroMatrix);
-            context->copy_to_device(biasGrad_currentLayer, zeroVec);
+            contextGPU_->copy_to_device(weightGrad_currentLayer, zeroMatrix);
+            contextGPU_->copy_to_device(biasGrad_currentLayer, zeroVec);
 
             accumulate_weight_grads.push_back(weightGrad_currentLayer);
             accumulate_bias_grads.push_back(biasGrad_currentLayer);
@@ -65,11 +74,18 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
 }
 
 Network::~Network() {
+    if (is_gpu_context_) {
+        for (auto ptr : accumulate_weight_grads) {
+            contextGPU_->free_weights(ptr);
+        }
+        for (auto ptr : accumulate_bias_grads) {
+            contextGPU_->free_biases(ptr);
+        }
+    }
+
     if (owns_context_ && context_) {
         delete context_;
     }
-
-    //TODO: clean up //GPU storage pointers
 }
 
 /**
@@ -147,123 +163,287 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     if (mini_batch.empty()) return 0.0;
     double norm = 0.0;
 
-    std::vector<Eigen::MatrixXd> weight_grads;
-    std::vector<Eigen::VectorXd> bias_grads;
-    for (size_t i = 0; i < layers.size(); ++i) {
-        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
-        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
-    }
+    std::vector<Eigen::MatrixXd> weight_grads(layers.size(), Eigen::MatrixXd());
+    std::vector<Eigen::VectorXd> bias_grads(layers.size(), Eigen::VectorXd());
 
-   
-    if (dynamic_cast<GPUComputationContext*>(context_)) {
-        //GPU Context
-        for (const auto& [x, y] : mini_batch) {
-            int idx = 0;
-            auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-
-            //copy grads to device temporarily
-            //TODO: optimize backprop to return grads on device when using gpu context
-            std::vector<double*> biasGrads_in = createDeviceVectors(delta_nabla_b);
-            std::vector<double*> WeightGrads_in = createDeviceMatrices(delta_nabla_w);
-            
-            context_->accumulateGradientsGPU(
-                WeightGrads_in, biasGrads_in,
-                accumulate_weight_grads, accumulate_bias_grads,
-                weight_rows, weight_cols, bias_sizes, 1.0 );
-
-            //Free temp device pointers
-            for (size_t i = 0; i < WeightGrads_in.size(); ++i) {
-                context_->free_vector(WeightGrads_in[i]);
-                context_->free_vector(biasGrads_in[i]);
-            }
-
-            //TODO: Temporary, till norm calculation gets ported to gpu
-            context_->copy_weights_to_host(weight_grads[idx], accumulate_weight_grads[idx], weight_rows[idx], weight_cols[idx]);
-            context_->copy_biases_to_host(bias_grads[idx], accumulate_bias_grads[idx], bias_sizes[idx]);
-            idx++;
-        }
-
-        //TODO: Calculate the norm on GPU 
+    if (is_gpu_context_) {
+        // GPU path: Accumulate on device, no host grads needed for accumulation
+        // Reset accumulators to zero
         for (size_t i = 0; i < layers.size(); ++i) {
-            norm += bias_grads[i].squaredNorm();
-            norm += weight_grads[i].squaredNorm();
+            contextGPU_->set_to_zero(accumulate_weight_grads[i], weight_rows[i] * weight_cols[i]);
+            contextGPU_->set_to_zero(accumulate_bias_grads[i], bias_sizes[i]);
         }
-        norm = std::sqrt(norm / mini_batch.size());
 
+        for (const auto& [x, y] : mini_batch) {
+            backprop_gpu(x, y, n);  // Accumulates directly on device
+        }
+
+        // Scale and update (still on device)
         double scale = eta / mini_batch.size();
-
         for (size_t i = 0; i < layers.size(); ++i) {
             layers[i]->update_parameters(accumulate_weight_grads[i], accumulate_bias_grads[i], scale);
         }
+
+        // Compute norm on GPU
+        norm = contextGPU_->compute_gradient_norm_gpu(
+            accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
     }
     else {
-        for (const auto& [x, y] : mini_batch) {
-            auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-            context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
+        // CPU path: Use host gradients
+        for (size_t i = 0; i < layers.size(); ++i) {
+            weight_grads[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            bias_grads[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
         }
 
-        for (size_t i = 0; i < layers.size(); ++i) {
-            norm += bias_grads[i].squaredNorm();
-            norm += weight_grads[i].squaredNorm();
+        for (const auto& [x, y] : mini_batch) {
+            auto [delta_nabla_b, delta_nabla_w] = backprop_cpu(x, y, n);
+            contextCPU_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
         }
-        norm = std::sqrt(norm / mini_batch.size());
 
         double scale = eta / mini_batch.size();
         for (size_t i = 0; i < layers.size(); ++i) {
             layers[i]->update_parameters(weight_grads[i], bias_grads[i], scale);
         }
 
+        // Compute norm on CPU
+        norm = 0.0;
+        for (size_t i = 0; i < layers.size(); ++i) {
+            norm += contextCPU_->compute_squared_norm(weight_grads[i]);
+            norm += bias_grads[i].squaredNorm();
+        }
+        norm = std::sqrt(norm / mini_batch.size());
     }
 
     return norm;
 }
 
+//double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
+//    if (mini_batch.empty()) return 0.0;
+//    double norm = 0.0;
+//
+//    std::vector<Eigen::MatrixXd> weight_grads;
+//    std::vector<Eigen::VectorXd> bias_grads;
+//    for (size_t i = 0; i < layers.size(); ++i) {
+//        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
+//        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
+//    }
+//
+//   
+//    if (dynamic_cast<GPUComputationContext*>(context_)) {
+//        //GPU Context
+//        for (const auto& [x, y] : mini_batch) {
+//            int idx = 0;
+//            auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
+//
+//            //copy grads to device temporarily
+//            //TODO: optimize backprop to return grads on device when using gpu context
+//            std::vector<double*> biasGrads_in = createDeviceVectors(delta_nabla_b);
+//            std::vector<double*> WeightGrads_in = createDeviceMatrices(delta_nabla_w);
+//            
+//            context_->accumulateGradientsGPU(
+//                WeightGrads_in, biasGrads_in,
+//                accumulate_weight_grads, accumulate_bias_grads,
+//                weight_rows, weight_cols, bias_sizes, 1.0 );
+//
+//            //Free temp device pointers
+//            for (size_t i = 0; i < WeightGrads_in.size(); ++i) {
+//                context_->free_vector(WeightGrads_in[i]);
+//                context_->free_vector(biasGrads_in[i]);
+//            }
+//
+//            //TODO: Temporary, till norm calculation gets ported to gpu
+//            context_->copy_weights_to_host(weight_grads[idx], accumulate_weight_grads[idx], weight_rows[idx], weight_cols[idx]);
+//            context_->copy_biases_to_host(bias_grads[idx], accumulate_bias_grads[idx], bias_sizes[idx]);
+//            idx++;
+//        }
+//
+//        //TODO: Calculate the norm on GPU 
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            norm += bias_grads[i].squaredNorm();
+//            norm += weight_grads[i].squaredNorm();
+//        }
+//        norm = std::sqrt(norm / mini_batch.size());
+//
+//        double scale = eta / mini_batch.size();
+//
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            layers[i]->update_parameters(accumulate_weight_grads[i], accumulate_bias_grads[i], scale);
+//        }
+//    }
+//    else {
+//        for (const auto& [x, y] : mini_batch) {
+//            auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
+//            context_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
+//        }
+//
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            norm += bias_grads[i].squaredNorm();
+//            norm += weight_grads[i].squaredNorm();
+//        }
+//        norm = std::sqrt(norm / mini_batch.size());
+//
+//        double scale = eta / mini_batch.size();
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            layers[i]->update_parameters(weight_grads[i], bias_grads[i], scale);
+//        }
+//
+//    }
+//
+//    return norm;
+//}
 
-std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
+// CPU-specific backprop (computes and returns host gradients)
+std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_cpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
-    std::vector<Eigen::VectorXd> nabla_b(layers.size());
-    std::vector<Eigen::MatrixXd> nabla_w(layers.size());
-
-    // Initialize gradient vectors and matrices
-    for (size_t i = 0; i < layers.size(); ++i) {
-        nabla_b[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
-        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-    }
+    std::vector<Eigen::VectorXd> nabla_b(layers.size(), Eigen::VectorXd());
+    std::vector<Eigen::MatrixXd> nabla_w(layers.size(), Eigen::MatrixXd());
 
     // Forward pass
-    Eigen::VectorXd activation = x;
-    std::vector<Eigen::VectorXd> activations = { x };
-    for (auto& layer : layers) {
-        activation = layer->forward(activation);
-        activations.push_back(layer->get_activations());
-    }
-
-    // Backward pass: Compute cost derivative for the output layer
-    Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
+    Eigen::VectorXd activation = feedforward(x);
+    Eigen::VectorXd delta = cost_derivative(activation, y);
 
     // Output layer gradients
-    size_t L = layers.size() - 1;
-    layers[L]->compute_gradients(cost_deriv, nabla_w[L], nabla_b[L]);
-    Eigen::VectorXd delta = nabla_b[L]; // delta[L]
+    int L = layers.size() - 1;
+    layers[L]->compute_gradients_cpu(delta, nabla_w[L], nabla_b[L]);
+
+    if (lambda > 0.0) {
+        nabla_w[L] += (lambda / n) * layers[L]->get_weights();
+    }
 
     // Hidden layer gradients
     for (int l = L - 1; l >= 0; --l) {
-        Eigen::MatrixXd weights_next = layers[l + 1]->get_weights();
-        Eigen::VectorXd next_deltas = weights_next.transpose() * delta;
-        layers[l]->compute_gradients(next_deltas, nabla_w[l], nabla_b[l]);
-        delta = nabla_b[l]; // Update delta for the next layer
-    }
+        /*delta = (layers[l + 1]->get_weights().transpose() * delta).cwiseProduct(
+            activation_->derivative(&layers[l]->get_activations(), &layers[l]->get_pre_activations()));*/
 
-    // Apply L2 regularization to weight gradients
-    if (lambda > 0.0 && n > 0) {
-        for (size_t i = 0; i < layers.size(); ++i) {
-            nabla_w[i] += (lambda / n) * layers[i]->get_weights();
+        delta = layers[l + 1]->get_weights().transpose() * delta;
+        // note: no derivative here, will be applied inside compute_gradients_cpu
+        layers[l]->compute_gradients_cpu(delta, nabla_w[l], nabla_b[l]);
+
+        if (lambda > 0.0) {
+            nabla_w[l] += (lambda / n) * layers[l]->get_weights();
         }
     }
 
     return { nabla_b, nabla_w };
 }
+
+// GPU-specific backprop (computes and accumulates gradients on device; returns empty)
+std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_gpu(
+    const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
+
+    // Forward pass (already caches on device)
+    feedforward(x);
+
+    // Compute output delta on host for now (TODO: port to GPU if needed)
+    Eigen::VectorXd activation;
+    contextGPU_->copy_to_host(activation, layers.back()->get_d_activations_(), layers.back()->get_num_neurons());
+    Eigen::VectorXd delta = cost_derivative(activation, y);
+
+    int L = layers.size() - 1;
+    layers[L]->compute_gradients_gpu(delta);
+
+    if (lambda > 0.0) {
+        // Add regularization on device
+        contextGPU_->add_regularization(
+            layers[L]->get_d_weight_grads_(), layers[L]->get_d_weights(), lambda / n,
+            layers[L]->get_num_neurons(), layers[L]->get_num_inputs());
+    }
+
+    for (int l = L - 1; l >= 0; --l) {
+        // Propagate delta back (use cublas for transpose matvec)
+        double* d_delta_next = layers[l + 1]->get_d_bias_grads_();  // Reuse bias_grads as temp for delta
+        contextGPU_->copy_to_device(d_delta_next, delta);
+
+        double* d_delta = nullptr;
+        contextGPU_->allocate_vector(&d_delta, layers[l]->get_num_neurons());
+        contextGPU_->compute_delta_back(
+            layers[l + 1]->get_d_weights(), d_delta_next, d_delta,
+            layers[l + 1]->get_num_inputs(), layers[l + 1]->get_num_neurons());
+
+        // Elementwise multiply with derivative (on device)
+        // Problem here- derivative gets apllied again in compute_gradients_gpu, so no need here.
+        layers[l]->apply_derivative_gpu(d_delta);  // New method, see Layer.cpp
+
+        layers[l]->compute_gradients_gpu(Eigen::VectorXd());  // Empty host delta; uses device
+
+        if (lambda > 0.0) {
+            contextGPU_->add_regularization(
+                layers[l]->get_d_weight_grads_(), layers[l]->get_d_weights(), lambda / n,
+                layers[l]->get_num_neurons(), layers[l]->get_num_inputs());
+        }
+
+        // Copy new delta to host for next iteration (minimize copies)
+        contextGPU_->copy_to_host(delta, d_delta, layers[l]->get_num_neurons());
+        contextGPU_->free_vector(d_delta);
+    }
+
+    // Accumulate to batch grads on device
+    contextGPU_->accumulateGradientsGPU(
+        get_layer_d_weight_grads(), get_layer_d_bias_grads(),  // New helper to get per-layer d_grads
+        accumulate_weight_grads, accumulate_bias_grads,
+        weight_rows, weight_cols, bias_sizes, 1.0);
+
+    return { {}, {} };  // Empty return; grads are on device
+}
+
+// Dispatcher
+std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
+    const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
+    if (is_gpu_context_) {
+        return backprop_gpu(x, y, n);
+    }
+    else {
+        return backprop_cpu(x, y, n);
+    }
+}
+
+
+//std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
+//    const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
+//
+//    std::vector<Eigen::VectorXd> nabla_b(layers.size());
+//    std::vector<Eigen::MatrixXd> nabla_w(layers.size());
+//
+//    // Initialize gradient vectors and matrices
+//    for (size_t i = 0; i < layers.size(); ++i) {
+//        nabla_b[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
+//        nabla_w[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+//    }
+//
+//    // Forward pass
+//    Eigen::VectorXd activation = x;
+//    std::vector<Eigen::VectorXd> activations = { x };
+//    for (auto& layer : layers) {
+//        activation = layer->forward(activation);
+//        activations.push_back(layer->get_activations());
+//    }
+//
+//    // Backward pass: Compute cost derivative for the output layer
+//    Eigen::VectorXd cost_deriv = cost_derivative(activations.back(), y);
+//
+//    // Output layer gradients
+//    size_t L = layers.size() - 1;
+//    layers[L]->compute_gradients(cost_deriv, nabla_w[L], nabla_b[L]);
+//    Eigen::VectorXd delta = nabla_b[L]; // delta[L]
+//
+//    // Hidden layer gradients
+//    for (int l = L - 1; l >= 0; --l) {
+//        Eigen::MatrixXd weights_next = layers[l + 1]->get_weights();
+//        Eigen::VectorXd next_deltas = weights_next.transpose() * delta;
+//        layers[l]->compute_gradients(next_deltas, nabla_w[l], nabla_b[l]);
+//        delta = nabla_b[l]; // Update delta for the next layer
+//    }
+//
+//    // Apply L2 regularization to weight gradients
+//    if (lambda > 0.0 && n > 0) {
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            nabla_w[i] += (lambda / n) * layers[i]->get_weights();
+//        }
+//    }
+//
+//    return { nabla_b, nabla_w };
+//}
 
 /**
  * @brief Evaluates the network on test data and computes loss.
@@ -623,4 +803,22 @@ bool Network::is_correct_prediction(const Eigen::VectorXd& output, const Eigen::
     output.maxCoeff(&predicted);
     target.maxCoeff(&actual);
     return predicted == actual;
+}
+
+
+// Example new helper
+std::vector<double*> Network::get_layer_d_weight_grads() {
+    std::vector<double*> grads;
+    for (auto& layer : layers) {
+        grads.push_back(layer->get_d_weight_grads_());
+    }
+    return grads;
+}
+
+std::vector<double*> Network::get_layer_d_bias_grads() {
+    std::vector<double*> grads;
+    for (auto& layer : layers) {
+        grads.push_back(layer->get_d_bias_grads_());
+    }
+    return grads;
 }

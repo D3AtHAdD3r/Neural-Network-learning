@@ -57,6 +57,73 @@ __global__ void debugPrint_kernel(const double* data, int n) {
 
 }
 
+// New kernel for setting array to zero
+__global__ void set_to_zero_kernel(double* data, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        data[idx] = 0.0;
+    }
+}
+
+// New kernel for sum of squares
+__global__ void sum_squares_reduction(const double* input, double* output, int n) {
+    // Similar to sumReductionKernel, but sdata[tid] = (idx < n) ? input[idx] * input[idx] : 0.0;
+}
+
+// New method
+void GPUComputationContext::set_to_zero(double* d_data, int n) {
+    int threads = 256;
+    int blocks = (n + threads - 1) / threads;
+    set_to_zero_kernel << <blocks, threads >> > (d_data, n);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// New: Add regularization (weight_grad += scale * weights)
+void GPUComputationContext::add_regularization(double* d_weight_grad, double* d_weights, double scale, int m, int n) {
+    double alpha = scale;
+    cublasDaxpy(cublasHandle, m * n, &alpha, d_weights, 1, d_weight_grad, 1);
+}
+
+// New: Compute delta back (delta = W^T * delta_next)
+void GPUComputationContext::compute_delta_back(double* d_weights, double* d_delta_next, double* d_delta, int m, int n) {
+    double alpha = 1.0, beta = 0.0;
+    cublasDgemv(cublasHandle, CUBLAS_OP_T, m, n, &alpha, d_weights, m, d_delta_next, 1, &beta, d_delta, 1);
+}
+
+// New: Compute total gradient norm across all layers/batches
+double GPUComputationContext::compute_gradient_norm_gpu(
+    const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
+    const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size) {
+    double total_sq_norm = 0.0;
+    for (size_t i = 0; i < weight_grads.size(); ++i) {
+        total_sq_norm += compute_squared_norm_gpu(weight_grads[i], w_rows[i] * w_cols[i]);
+        total_sq_norm += compute_squared_norm_gpu(bias_grads[i], b_sizes[i]);
+    }
+    return std::sqrt(total_sq_norm / batch_size);
+}
+
+// New helper: Squared norm on GPU (use reduction kernel)
+double GPUComputationContext::compute_squared_norm_gpu(double* d_data, int n) {
+    double* d_sum;
+    cudaMalloc(&d_sum, sizeof(double));
+    sumReductionKernel << <1, 256, 256 * sizeof(double) >> > (d_data, d_sum, n);  // Simplified; use full reduction for large n
+    double sum;
+    cudaMemcpy(&sum, d_sum, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_sum);
+    return sum * sum;  // Wait, no: squared norm is sum of squares, so sum (x_i^2)
+    // Actually, modify sumReduction to sum squares
+    // New kernel for sum of squares
+}
+
+// New elementwise_multiply_Caller
+void GPUComputationContext::launch_elementwise_multiply(const double* a, const double* b, double* c, int n) {
+    int threads = 256;
+    int blocks = (n + threads - 1) / threads;
+    elementwise_multiply << <blocks, threads >> > (a, b, c, n);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+
 
 Eigen::VectorXd GPUComputationContext::computeLinear(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
 {

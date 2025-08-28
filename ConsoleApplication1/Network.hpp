@@ -61,8 +61,21 @@ public:
     //For unit tests(NeuralNetworkTest). TODO: make them private or protected and expose it through friend test classes
     std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; }
 
+    //helper to get per-layer d_grads
+    std::vector<double*> get_layer_d_weight_grads();
+    std::vector<double*> get_layer_d_bias_grads();
+
 public:
     //Temporarily public
+    // CPU-specific backprop (returns host gradients)
+    std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop_cpu(
+        const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
+
+    // GPU-specific backprop (accumulates gradients directly on device; returns empty for compatibility)
+    std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop_gpu(
+        const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
+
+    // Wrapper to dispatch based on context
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
@@ -105,7 +118,10 @@ private:
     NeuronType neuron_type_;                        ///< Track chosen neuron type
     std::unique_ptr<Activation> activation_;        ///< Dynamic activation instance
     ComputationContext* context_;                   // Raw pointer
+    GPUComputationContext* contextGPU_ = nullptr;
+    CPUComputationContext* contextCPU_ = nullptr;
     bool owns_context_;                             // Flag to track ownership
+    bool is_gpu_context_;                           // New: Cached flag for quick dispatch
 
 private:
     //GPU storage pointers

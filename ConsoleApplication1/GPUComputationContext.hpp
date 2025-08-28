@@ -146,6 +146,17 @@ public:
 
     //debug
     void debugPrint(const double* data, int n) override;
+
+public:
+    void set_to_zero(double* d_data, int n);
+    void add_regularization(double* d_weight_grad, double* d_weights, double scale, int m, int n);
+    void compute_delta_back(double* d_weights, double* d_delta_next, double* d_delta, int m, int n);
+    double compute_gradient_norm_gpu(
+        const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
+        const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size);
+
+    double compute_squared_norm_gpu(double* d_data, int n);
+    void launch_elementwise_multiply(const double* a, const double* b, double* c, int n);
 };
 
 // Optional: Factory function to create an instance
