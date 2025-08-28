@@ -53,6 +53,7 @@ public:
         double scale) = 0;
 
     virtual double compute_squared_norm(const Eigen::MatrixXd& matrix) = 0;
+    virtual double compute_squared_norm(const Eigen::VectorXd& vector) = 0;
 
     virtual double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) = 0;
 

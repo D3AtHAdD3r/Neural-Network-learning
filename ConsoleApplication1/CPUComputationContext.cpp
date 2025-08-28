@@ -69,6 +69,12 @@ double CPUComputationContext::compute_squared_norm(const Eigen::MatrixXd& matrix
 	return matrix.squaredNorm();
 }
 
+double CPUComputationContext::compute_squared_norm(const Eigen::VectorXd& vector)
+{
+	return vector.squaredNorm();
+}
+
+
 double CPUComputationContext::compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
 {
 	Eigen::VectorXd diff = output - target;
@@ -183,4 +189,16 @@ void CPUComputationContext::debugPrint(const double* data, int n) {
 }
 
 
+void CPUComputationContext::computeGradientsCPU(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, bool apply_derivative)
+{
+	Eigen::VectorXd adjusted_deltas = deltas;
+	if (apply_derivative) {
+		// Element-wise multiplication of deltas and activation derivatives
+		adjusted_deltas = deltas.cwiseProduct(activation_derives);
+	}
+	// Outer product to compute weight gradients
+	weight_grads = adjusted_deltas * input.transpose();
+	// Bias gradients are the adjusted deltas
+	bias_grads = adjusted_deltas;
+}
 

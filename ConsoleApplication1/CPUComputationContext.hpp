@@ -42,6 +42,7 @@ public:
         double scale) override;
 
     double compute_squared_norm(const Eigen::MatrixXd& matrix) override;
+    double compute_squared_norm(const Eigen::VectorXd& vector) override;
 
     double compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target) override;
 
@@ -93,6 +94,14 @@ public:
         const std::vector<int>& weight_cols,
         const std::vector<int>& bias_sizes,
         double scale) override;
+
+    void computeGradientsCPU(
+        const Eigen::VectorXd& deltas,
+        const Eigen::VectorXd& activation_derives,
+        const Eigen::VectorXd& input,
+        Eigen::MatrixXd& weight_grads,
+        Eigen::VectorXd& bias_grads, 
+        bool apply_derivative);
 
     //debug
     void debugPrint(const double* data, int n) override;

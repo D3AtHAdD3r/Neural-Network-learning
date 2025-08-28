@@ -63,7 +63,8 @@ public:
 
     //helper to get per-layer d_grads
     std::vector<double*> get_layer_d_weight_grads();
-    std::vector<double*> get_layer_d_bias_grads();
+    // Getter for layer deltas (replaces get_layer_d_bias_grads)
+    std::vector<double*> get_layer_d_delta();
 
 public:
     //Temporarily public

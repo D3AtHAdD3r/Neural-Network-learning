@@ -53,20 +53,21 @@ public:
 	 * @param weight_grads Output weight gradients (num_neurons x num_inputs)
 	 * @param bias_grads Output bias gradients (num_neurons)
 	 */
-	void compute_gradients_cpu(const Eigen::VectorXd& deltas,
+	void compute_gradients_cpu(
+		const Eigen::VectorXd& deltas,
 		Eigen::MatrixXd& weight_grads,
-		Eigen::VectorXd& bias_grads) const;
+		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;
 
 	/**
 	 * @brief Computes gradients for weights and biases (GPU variant; caches on device).
 	 * @param deltas Error terms (host; empty if already on device)
 	 */
-	void compute_gradients_gpu(const Eigen::VectorXd& deltas);
+	void compute_gradients_gpu(double* d_deltas, bool apply_derivative = true);
 
 	// Wrapper to dispatch
 	void compute_gradients(const Eigen::VectorXd& deltas,
 		Eigen::MatrixXd& weight_grads,
-		Eigen::VectorXd& bias_grads) const;
+		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;
 
 	/**
 	 * @brief Updates weights and biases using pre-computed gradients (CPU).
@@ -111,7 +112,8 @@ public:
 	double* get_d_derivatives() const { return d_derivatives; }
 	double* get_d_dy() const { return d_dy; }
 	double* get_d_weight_grads_() const { return d_weight_grads_; }  // New
-	double* get_d_bias_grads_() const { return d_bias_grads_; }      // New
+	//double* get_d_bias_grads_() const { return d_bias_grads_; }      // New
+	double* get_d_delta_() const { return d_delta_; }  
 
 	void set_weights(const Eigen::MatrixXd& weights);
 	void set_biases(const Eigen::VectorXd& biases);
@@ -141,7 +143,8 @@ private:
 	double* d_derivatives;
 	double* d_dy;
 	double* d_weight_grads_;            ///< GPU pointer for weight gradients
-	double* d_bias_grads_;             ///< GPU pointer for bias gradients
+	double* d_delta_;					///< GPU pointer for delta (and bias gradients)
+	double* d_temp_;					///< GPU temp for adjusted delta
 };
 
 #endif // LAYER_HPP

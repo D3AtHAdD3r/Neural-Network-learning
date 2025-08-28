@@ -119,13 +119,24 @@ public:
         double* d_dy, double* d_derivatives, 
         int size, const Activation* activation) override;
 
-    void computeGradientsGPU(
+    /*void computeGradientsGPU(
         const Eigen::VectorXd& deltas,
         double* d_derivatives,
         double* d_input,
         double* weight_grads,
         double* bias_grads,
-        int m, int n) override;
+        int m, int n) override;*/
+
+    void computeGradientsGPU(
+        double* d_incoming_deltas,   // incoming deltas (on device)
+        double* d_input,             // input vector (on device)
+        double* d_derivatives,       // activation derivatives (on device, computed beforehand if needed)
+        double* d_weight_grads,      // output: weight gradients
+        double* d_bias_grads,        // output: bias gradients
+        double* d_temp,              // temp buffer, same size as num_neurons
+        int num_neurons,
+        int num_inputs,
+        bool apply_derivative);
 
     void updateParametersGPU(
         double* d_weights,
@@ -151,12 +162,18 @@ public:
     void set_to_zero(double* d_data, int n);
     void add_regularization(double* d_weight_grad, double* d_weights, double scale, int m, int n);
     void compute_delta_back(double* d_weights, double* d_delta_next, double* d_delta, int m, int n);
+
+    /*double compute_gradient_norm_gpu(
+        const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
+        const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size);*/
+
     double compute_gradient_norm_gpu(
         const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
         const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size);
 
     double compute_squared_norm_gpu(double* d_data, int n);
     void launch_elementwise_multiply(const double* a, const double* b, double* c, int n);
+    void launch_elementwise_subtract(const double* a, const double* b, double* c, int n);
 };
 
 // Optional: Factory function to create an instance

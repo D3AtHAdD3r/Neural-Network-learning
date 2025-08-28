@@ -1,4 +1,4 @@
-#ifdef __INTELLISENSE__
+﻿#ifdef __INTELLISENSE__
 #define CUDA_KERNEL_NODE_PARAMS
 #define __CUDACC__
 #endif
@@ -70,6 +70,13 @@ __global__ void sum_squares_reduction(const double* input, double* output, int n
     // Similar to sumReductionKernel, but sdata[tid] = (idx < n) ? input[idx] * input[idx] : 0.0;
 }
 
+// New: Elementwise subtract (a - b -> c)
+void GPUComputationContext::launch_elementwise_subtract(const double* a, const double* b, double* c, int n) {
+    CHECK_CUDA(cudaMemcpy(c, a, n * sizeof(double), cudaMemcpyDeviceToDevice));
+    double alpha = -1.0;
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, n, &alpha, b, 1, c, 1));
+}
+
 // New method
 void GPUComputationContext::set_to_zero(double* d_data, int n) {
     int threads = 256;
@@ -91,15 +98,29 @@ void GPUComputationContext::compute_delta_back(double* d_weights, double* d_delt
 }
 
 // New: Compute total gradient norm across all layers/batches
+//double GPUComputationContext::compute_gradient_norm_gpu(
+//    const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
+//    const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size) {
+//    double total_sq_norm = 0.0;
+//    for (size_t i = 0; i < weight_grads.size(); ++i) {
+//        total_sq_norm += compute_squared_norm_gpu(weight_grads[i], w_rows[i] * w_cols[i]);
+//        total_sq_norm += compute_squared_norm_gpu(bias_grads[i], b_sizes[i]);
+//    }
+//    return std::sqrt(total_sq_norm / batch_size);
+//}
+
 double GPUComputationContext::compute_gradient_norm_gpu(
     const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
     const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size) {
     double total_sq_norm = 0.0;
+    double temp_norm;
     for (size_t i = 0; i < weight_grads.size(); ++i) {
-        total_sq_norm += compute_squared_norm_gpu(weight_grads[i], w_rows[i] * w_cols[i]);
-        total_sq_norm += compute_squared_norm_gpu(bias_grads[i], b_sizes[i]);
+        CHECK_CUBLAS(cublasDnrm2(cublasHandle, w_rows[i] * w_cols[i], weight_grads[i], 1, &temp_norm));
+        total_sq_norm += temp_norm * temp_norm;
+        CHECK_CUBLAS(cublasDnrm2(cublasHandle, b_sizes[i], bias_grads[i], 1, &temp_norm));
+        total_sq_norm += temp_norm * temp_norm;
     }
-    return std::sqrt(total_sq_norm / batch_size);
+    return std::sqrt(total_sq_norm) / batch_size;  // Average norm per example
 }
 
 // New helper: Squared norm on GPU (use reduction kernel)
@@ -685,34 +706,44 @@ void GPUComputationContext::debugPrint(const double* data, int num_inputs) {
     cudaDeviceSynchronize();
 }
 
-void GPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas,
-    double* d_derivatives,
-    double* d_input,
-    double* d_weight_grads,
-    double* d_bias_grads,
-    int m, int n) {
+void GPUComputationContext::computeGradientsGPU( 
+    double* d_incoming_deltas,   // incoming deltas (on device)
+    double* d_input,             // input vector (on device)
+    double* d_derivatives,       // activation derivatives (on device, computed beforehand if needed)
+    double* d_weight_grads,      // output: weight gradients
+    double* d_bias_grads,        // output: bias gradients
+    double* d_temp,              // temp buffer, same size as num_neurons
+    int num_neurons,
+    int num_inputs,
+    bool apply_derivative
+) {
+    double* d_adjusted_deltas = nullptr;
 
-    double* d_deltas;
-    CHECK_CUDA(cudaMalloc(&d_deltas, m * sizeof(double)));
-    CHECK_CUDA(cudaMemcpy(d_deltas, deltas.data(), m * sizeof(double), cudaMemcpyHostToDevice));
+    if (apply_derivative) {
+        // multiply incoming_deltas * derivatives → temp
+        launch_elementwise_multiply(d_incoming_deltas, d_derivatives, d_temp, num_neurons);
+        d_adjusted_deltas = d_temp;
+    }
+    else {
+        d_adjusted_deltas = d_incoming_deltas;
+    }
 
-    double* d_adjusted_deltas;
-    CHECK_CUDA(cudaMalloc(&d_adjusted_deltas, m * sizeof(double)));
+    // reset weight grads
+    set_to_zero(d_weight_grads, num_neurons * num_inputs);
 
-    int threads = 256;
-    int blocks = (m + threads - 1) / threads;
-    elementwise_multiply << <blocks, threads >> > (d_deltas, d_derivatives, d_adjusted_deltas, m);
-    CHECK_CUDA(cudaGetLastError());
-
-    CHECK_CUDA(cudaMemset(d_weight_grads, 0, m * n * sizeof(double)));
-
+    // weight grads = outer(adjusted_deltas, input)
     double alpha = 1.0;
-    CHECK_CUBLAS(cublasDger(cublasHandle, m, n, &alpha, 
-        d_adjusted_deltas, 1, d_input, 1, d_weight_grads, m));
+    CHECK_CUBLAS(cublasDger(cublasHandle,
+        num_neurons, num_inputs,
+        &alpha,
+        d_adjusted_deltas, 1,
+        d_input, 1,
+        d_weight_grads, num_neurons));
 
-    CHECK_CUDA(cudaMemcpy(d_bias_grads, d_adjusted_deltas, m * sizeof(double), cudaMemcpyDeviceToDevice));
-    CHECK_CUDA(cudaFree(d_adjusted_deltas));
+    // bias grads (a.k.a. delta) = adjusted_deltas
+    CHECK_CUDA(cudaMemcpy(d_bias_grads, d_adjusted_deltas, num_neurons * sizeof(double), cudaMemcpyDeviceToDevice));
 }
+
 
 void GPUComputationContext::updateParametersGPU(double* d_weights,
     double* d_biases,
