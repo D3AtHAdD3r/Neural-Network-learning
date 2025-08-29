@@ -43,32 +43,8 @@ public:
         const std::vector<std::pair<Eigen::VectorXd, int>>* test_data = nullptr,
         bool verbose = true);
 
-    void display_biases() const;
-    void display_weights() const;
-    void display_layer_biases(int max_elements = 10) const;
-    void display_layer_weights(int max_elements = 10) const;
-    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
+    double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
 
-public:
-    //setters
-    void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
-    void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
-    
-public:
-    //getters
-    const std::vector<std::unique_ptr<Layer>>& get_layers() const { return layers; }
- 
-    //For unit tests(NeuralNetworkTest). TODO: make them private or protected and expose it through friend test classes
-    std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; }
-
-    //helper to get per-layer d_grads
-    std::vector<double*> get_layer_d_weight_grads();
-    // Getter for layer deltas (replaces get_layer_d_bias_grads)
-    std::vector<double*> get_layer_d_delta();
-
-public:
-    //Temporarily public
-    // CPU-specific backprop (returns host gradients)
     std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop_cpu(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
@@ -81,26 +57,43 @@ public:
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
-
-    // New overload for training data (target as one-hot vector)
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
 
-    double update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
+public:
+    //Debug
+    void display_biases() const;
+    void display_weights() const;
+    void display_layer_biases(int max_elements = 10) const;
+    void display_layer_weights(int max_elements = 10) const;
+    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
+
+public:
+    //setters
+    void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
+    void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
+    
+    //getters
+    const std::vector<std::unique_ptr<Layer>>& get_layers() const { return layers; }
+ 
+    //For unit tests(NeuralNetworkTest). 
+    std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; }
+
+    //helper to get per-layer d_grads
+    std::vector<double*> get_layer_d_weight_grads();
+    std::vector<double*> get_layer_d_delta(); //d_delta = d_bias_grads
 
 private:
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
-
 private:
-    double compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
-    double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
+    //unused/obsolete
+    //double compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+    //double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:
     //Temporary helpers for cuda operations
-    
     //Returns dynamic created pointers, cleanup is upto callers
     std::vector<double*> createDeviceVectors(const std::vector<Eigen::VectorXd>& vec);
     std::vector<double*> createDeviceMatrices(const std::vector<Eigen::MatrixXd>& mat);
-
     void freeDevicePointers(std::vector<double*>& d_pointers);
 
 private:

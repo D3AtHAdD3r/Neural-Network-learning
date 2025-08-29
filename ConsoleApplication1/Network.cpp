@@ -204,7 +204,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
         for (const auto& [x, y] : mini_batch) {
             auto [nabla_b, nabla_w] = backprop_cpu(x, y, n);
-            contextCPU_->accumulateGradients(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
+            contextCPU_->accumulateGradientsCPU(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
         }
 
         // Add L2 regularization
@@ -222,8 +222,8 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
         double total_sq_norm = 0.0;
         for (size_t i = 0; i < layers.size(); ++i) {
-            total_sq_norm += contextCPU_->compute_squared_norm(weight_grads[i]);
-            total_sq_norm += contextCPU_->compute_squared_norm(bias_grads[i]);
+            total_sq_norm += contextCPU_->compute_squared_normCPU(weight_grads[i]);
+            total_sq_norm += contextCPU_->compute_squared_normCPU(bias_grads[i]);
         }
         norm = std::sqrt(total_sq_norm) / mini_batch.size();
     }
@@ -231,63 +231,6 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     return norm;
 }
 
-//double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
-//    if (mini_batch.empty()) return 0.0;
-//    double norm = 0.0;
-//
-//    std::vector<Eigen::MatrixXd> weight_grads(layers.size(), Eigen::MatrixXd());
-//    std::vector<Eigen::VectorXd> bias_grads(layers.size(), Eigen::VectorXd());
-//
-//    if (is_gpu_context_) {
-//        // GPU path: Accumulate on device, no host grads needed for accumulation
-//        // Reset accumulators to zero
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            contextGPU_->set_to_zero(accumulate_weight_grads[i], weight_rows[i] * weight_cols[i]);
-//            contextGPU_->set_to_zero(accumulate_bias_grads[i], bias_sizes[i]);
-//        }
-//
-//        for (const auto& [x, y] : mini_batch) {
-//            backprop_gpu(x, y, n);  // Accumulates directly on device
-//        }
-//
-//        // Scale and update (still on device)
-//        double scale = eta / mini_batch.size();
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            layers[i]->update_parameters(accumulate_weight_grads[i], accumulate_bias_grads[i], scale);
-//        }
-//
-//        // Compute norm on GPU
-//        norm = contextGPU_->compute_gradient_norm_gpu(
-//            accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
-//    }
-//    else {
-//        // CPU path: Use host gradients
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            weight_grads[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-//            bias_grads[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
-//        }
-//
-//        for (const auto& [x, y] : mini_batch) {
-//            auto [delta_nabla_b, delta_nabla_w] = backprop_cpu(x, y, n);
-//            contextCPU_->accumulateGradients(delta_nabla_w, delta_nabla_b, weight_grads, bias_grads, 1.0);
-//        }
-//
-//        double scale = eta / mini_batch.size();
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            layers[i]->update_parameters(weight_grads[i], bias_grads[i], scale);
-//        }
-//
-//        // Compute norm on CPU
-//        norm = 0.0;
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            norm += contextCPU_->compute_squared_norm(weight_grads[i]);
-//            norm += bias_grads[i].squaredNorm();
-//        }
-//        norm = std::sqrt(norm / mini_batch.size());
-//    }
-//
-//    return norm;
-//}
 
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_cpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
@@ -313,7 +256,8 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     };
     default:
         //Throw some fucking error
-    }
+        break;
+    };
 
     //Output layer gradients
     layers.back()->compute_gradients_cpu(cost_prime, nabla_w.back(), nabla_b.back(), apply_deriv);
@@ -365,7 +309,8 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     };
     default:
         //Throw some fucking error
-    }
+        break;
+    };
 
     output_layer->compute_gradients_gpu(d_cost_prime, apply_deriv);
 
@@ -424,74 +369,145 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n) {
     int correct = 0;
     double total_loss = 0.0;
-
     double weight_norm = 0.0;
-    for (const auto& layer : layers) {
-        weight_norm += context_->compute_squared_norm(layer->get_weights());
-    }
 
-    for (const auto& [x, y] : test_data) {
-        Eigen::VectorXd output = feedforward(x);
-
-        if (is_correct_prediction(output, y))
-            ++correct;
-
-        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
-        target(y) = 1.0; // One-hot encoding for target label
+    if (is_gpu_context_) {
         
-        //TODO: put a switch here
-        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-            total_loss += context_->compute_mse_loss(output, target);
+        for (const auto& layer : layers) {
+            weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
         }
-        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {       
-            total_loss += context_->compute_cross_entropy_loss(output, target);
+
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward(x);
+
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
+            target(y) = 1.0; // One-hot encoding for target label
+
+            //TODO: put a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextGPU_->compute_mse_lossGPU(output, target);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextGPU_->compute_cross_entropy_lossGPU(output, target);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
         }
-        else {
-            throw std::runtime_error("Unsupported loss type");
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n; // Scaled L2 regularization
         }
+
+        last_test_loss = total_loss; // Cache total loss
+        return { correct, total_loss };
     }
-    if (lambda > 0.0 && n > 0) {
-        total_loss += 0.5 * lambda * weight_norm / n; // Scaled L2 regularization
+    else {
+        
+        for (const auto& layer : layers) {
+            weight_norm += contextCPU_->compute_squared_normCPU(layer->get_weights());
+        }
+
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward(x);
+
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
+            target(y) = 1.0; // One-hot encoding for target label
+
+            //TODO: put a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextCPU_->compute_mse_lossCPU(output, target);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextCPU_->compute_cross_entropy_lossCPU(output, target);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n; // Scaled L2 regularization
+        }
+
+        last_test_loss = total_loss; // Cache total loss
+        return { correct, total_loss };
     }
+
     
-    last_test_loss = total_loss; // Cache total loss
-    return { correct, total_loss };
 }
 
 
 std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n) {
     int correct = 0;
     double total_loss = 0.0;
-
     double weight_norm = 0.0;
-    for (const auto& layer : layers) {
-        weight_norm += context_->compute_squared_norm(layer->get_weights());
-    }
 
-    for (const auto& [x, y] : test_data) {
-        Eigen::VectorXd output = feedforward(x);
-
-        if (is_correct_prediction(output, y))
-            ++correct;
-
-        //TODO: add a switch here
-        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-            total_loss += context_->compute_mse_loss(output, y);
+    if (is_gpu_context_) {
+        for (const auto& layer : layers) {
+            weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
         }
-        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-            total_loss += context_->compute_cross_entropy_loss(output, y);
-        }
-        else {
-            throw std::runtime_error("Unsupported loss type");
-        }
-    }
 
-    if (lambda > 0.0 && n > 0) {
-        total_loss += 0.5 * lambda * weight_norm / n;
-    }
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward(x);
 
-    last_test_loss = total_loss;
-    return { correct, total_loss };
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            //TODO: add a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextGPU_->compute_mse_lossGPU(output, y);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextGPU_->compute_cross_entropy_lossGPU(output, y);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n;
+        }
+
+        last_test_loss = total_loss;
+        return { correct, total_loss };
+    }
+    else {
+        for (const auto& layer : layers) {
+            weight_norm += contextCPU_->compute_squared_normCPU(layer->get_weights());
+        }
+
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward(x);
+
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            //TODO: add a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextCPU_->compute_mse_lossCPU(output, y);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextCPU_->compute_cross_entropy_lossCPU(output, y);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n;
+        }
+
+        last_test_loss = total_loss;
+        return { correct, total_loss };
+    }
+    
 }
 
 
@@ -513,19 +529,19 @@ Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activatio
  * @param test_data Vector of (input, label) pairs
  * @return Average MSE loss
  */
-double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data)
-{
-    double total_loss = 0.0;
-    for (const auto& [x, y] : test_data) {
-        Eigen::VectorXd output = feedforward(x);
-        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
-        target(y) = 1.0; // One-hot encoding for target label
-        Eigen::VectorXd diff = output - target;
-        total_loss += diff.squaredNorm();
-    }
-    return total_loss / test_data.size();
-
-}
+//double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data)
+//{
+//    double total_loss = 0.0;
+//    for (const auto& [x, y] : test_data) {
+//        Eigen::VectorXd output = feedforward(x);
+//        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
+//        target(y) = 1.0; // One-hot encoding for target label
+//        Eigen::VectorXd diff = output - target;
+//        total_loss += diff.squaredNorm();
+//    }
+//    return total_loss / test_data.size();
+//
+//}
 
 
 /**
@@ -534,30 +550,30 @@ double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, i
  * @param n Number of training examples for L2 regularization scaling
  * @return L2 norm of gradients
  */
-double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n)
-{
-    std::vector<Eigen::MatrixXd> weight_grads;
-    std::vector<Eigen::VectorXd> bias_grads;
-    for (size_t i = 0; i < layers.size(); ++i) {
-        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
-        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
-    }
-
-    for (const auto& [x, y] : mini_batch) {
-        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-        for (size_t i = 0; i < layers.size(); ++i) {
-            bias_grads[i] += delta_nabla_b[i];
-            weight_grads[i] += delta_nabla_w[i];
-        }
-    }
-
-    double norm = 0.0;
-    for (size_t i = 0; i < layers.size(); ++i) {
-        norm += bias_grads[i].squaredNorm();
-        norm += weight_grads[i].squaredNorm();
-    }
-    return std::sqrt(norm / mini_batch.size());
-}
+//double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n)
+//{
+//    std::vector<Eigen::MatrixXd> weight_grads;
+//    std::vector<Eigen::VectorXd> bias_grads;
+//    for (size_t i = 0; i < layers.size(); ++i) {
+//        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
+//        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
+//    }
+//
+//    for (const auto& [x, y] : mini_batch) {
+//        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
+//        for (size_t i = 0; i < layers.size(); ++i) {
+//            bias_grads[i] += delta_nabla_b[i];
+//            weight_grads[i] += delta_nabla_w[i];
+//        }
+//    }
+//
+//    double norm = 0.0;
+//    for (size_t i = 0; i < layers.size(); ++i) {
+//        norm += bias_grads[i].squaredNorm();
+//        norm += weight_grads[i].squaredNorm();
+//    }
+//    return std::sqrt(norm / mini_batch.size());
+//}
 
 /**
  * @brief Displays biases for all layers.
@@ -728,8 +744,8 @@ std::vector<double*> Network::createDeviceVectors(const std::vector<Eigen::Vecto
     for (size_t i = 0; i < vec.size(); ++i) {
         int size = vec[i].size();
         double* d_vec = nullptr;
-        context_->allocate_biases(&d_vec, size);
-        context_->copy_biases_to_device(d_vec, vec[i]);
+        contextGPU_->allocate_biases(&d_vec, size);
+        contextGPU_->copy_biases_to_device(d_vec, vec[i]);
         devicePointerStorage.push_back(d_vec);
     }
 
@@ -746,8 +762,8 @@ std::vector<double*> Network::createDeviceMatrices(const std::vector<Eigen::Matr
         int n = mat[i].cols();
 
         double* d_mat = nullptr;
-        context_->allocate_weights(&d_mat, m, n);
-        context_->copy_weights_to_device(d_mat, mat[i]);
+        contextGPU_->allocate_weights(&d_mat, m, n);
+        contextGPU_->copy_weights_to_device(d_mat, mat[i]);
         devicePointerStorage.push_back(d_mat);
     }
 
@@ -758,7 +774,7 @@ std::vector<double*> Network::createDeviceMatrices(const std::vector<Eigen::Matr
 void Network::freeDevicePointers(std::vector<double*>& d_pointers) {
 
     for (auto& d_mem : d_pointers) {
-        context_->free_vector(d_mem);
+        contextGPU_->free_vector(d_mem);
     }
 }
 

@@ -2,7 +2,6 @@
 #include"Network.hpp"
 #include "CPUComputationContext.hpp"
 #include "GPUComputationContext.hpp"
-//#include "SigmoidActivation.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <string>
@@ -27,7 +26,20 @@ public:
         const std::vector<int>& network_sizes = { 2, 3, 2 }, Network::NeuronType neuron_type = Network::NeuronType::SIGMOID);
 
     ~NeuralNetworkTest();
+public:
+    bool testNetworkBackprop();
 
+public:
+    bool runAllTests();
+
+public:
+    /**
+     * @brief Generates an XOR-like dataset for testing.
+     * @param training_data Output vector for training data (input, target pairs)
+     * @param test_data Output vector for test data (input, label pairs)
+     */
+    void generateXORLikeDataset(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
+        std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 private:
     
     /**
@@ -50,60 +62,9 @@ private:
      * @param line Line number
      */
     void assertApprox(double a, double b, double tol, const std::string& message, const char* file, int line);
+    void assertVectorApprox(const Eigen::VectorXd& a, const Eigen::VectorXd& b, double tol, const std::string& message, const char* file, int line);
+    void assertMatrixApprox(const Eigen::MatrixXd& a, const Eigen::MatrixXd& b, double tol, const std::string& message, const char* file, int line);
 
-    /**
-     * @brief Computes activation for a vector of pre-activations.
-     * @param z Pre-activation values
-     * @return Activated values
-     */
-    Eigen::VectorXd computeActivation(const Eigen::VectorXd& z) const;
-
-    /**
-     * @brief Computes activation derivative for a vector of pre-activations.
-     * @param z Pre-activation values
-     * @return Derivative values
-     */
-    Eigen::VectorXd computeActivationDerivative(const Eigen::VectorXd& z) const;
-
-public:
-    //Outdated
-
-public:
-    bool testLayerConstructor();
-    bool testLayerForward();
-    bool testLayerGradients();
-    bool testLayerUpdateParameters();
-    bool testLayerComputeActivationDerivative();
-    bool testLayerComputeActivationDerivativeGPU();
-
-public:
-    //new network tests
-    bool testUpdateMiniBatchSimplified();
-    bool testBackpropGradientComputation();
-    bool testEvaluate();
-    bool testNetworkBackprop();
-
-public:
-    void testNetworkConstructor();
-    void testNetworkFeedforward();
-    void testNetworkSGD();
-    void testNetworkGradientChecking();
-    void testComputationContexts();
-
-public:
-    bool runAllTests();
-
-public:
-    void doStuff();
-
-public:
-    /**
-     * @brief Generates an XOR-like dataset for testing.
-     * @param training_data Output vector for training data (input, target pairs)
-     * @param test_data Output vector for test data (input, label pairs)
-     */
-    void generateXORLikeDataset(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
-        std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 
 private:
     static constexpr double TOL = 1e-3; ///< Tolerance for floating-point comparisons

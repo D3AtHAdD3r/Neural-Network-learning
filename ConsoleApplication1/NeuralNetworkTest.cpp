@@ -1,7 +1,6 @@
 #include "NeuralNetworkTest.hpp"
 #include "LegacyFuncs.h"
 #include"utils.h"
-//#include"Network.hpp"
 #include <iostream>
 #include <cmath>
 #include <cassert>
@@ -48,1764 +47,26 @@ void NeuralNetworkTest::assertApprox(double a, double b, double tol, const std::
     }
 }
 
-Eigen::VectorXd NeuralNetworkTest::computeActivation(const Eigen::VectorXd& z) const
-{
-    Eigen::VectorXd result(z.size());
-    switch (neuron_type_) {
-    case Network::NeuronType::SIGMOID:
-        result = activation_->activate(z);
-        break;
-    default:
-        throw std::runtime_error("Unsupported neuron type in computeActivation");
+// Helper function to assert vector approximations
+// This checks if two Eigen vectors are approximately equal element-wise within a tolerance.
+// Beginner note: We use this to compare computed gradients with expected values.
+void NeuralNetworkTest::assertVectorApprox(const Eigen::VectorXd& a, const Eigen::VectorXd& b, double tol, const std::string& message, const char* file, int line) {
+    assertTrue(a.size() == b.size(), "Vector size mismatch in " + message, file, line);
+    for (Eigen::Index i = 0; i < a.size(); ++i) {
+        assertApprox(a(i), b(i), tol, message + " at index " + std::to_string(i), file, line);
     }
-    return result;
 }
 
-Eigen::VectorXd NeuralNetworkTest::computeActivationDerivative(const Eigen::VectorXd& z) const
-{
-    if (z.size() != layer_neurons_) {
-        throw std::runtime_error("Invalid pre-activation size in computeActivationDerivative");
-    }
-
-    Eigen::VectorXd result(z.size());
-
-    switch (neuron_type_) {
-    case Network::NeuronType::SIGMOID:
-        result = activation_->derivative(nullptr, &z);
-        break;
-    default:
-        throw std::runtime_error("Unsupported neuron type in computeActivationDerivative");
-    }
-    return result;
-}
-
-bool NeuralNetworkTest::testLayerConstructor() {
-    std::cout << "----- Running testLayerConstructor... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    Eigen::MatrixXd cpu_weights, gpu_weights;
-    Eigen::VectorXd cpu_biases, gpu_biases;
-
-    // Test CPU and GPU contexts
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerConstructor\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
-
-        // Check weight matrix size
-        const auto& weights = layer.get_weights();
-        errorMsg = contextName + ": Incorrect weight matrix size";
-        assertTrue(weights.rows() == layer_neurons_ && weights.cols() == layer_inputs_,
-            errorMsg, __FILE__, __LINE__);
-
-        // Check bias vector size
-        const auto& biases = layer.get_biases();
-        errorMsg = contextName + ": Incorrect bias vector size";
-        assertTrue(biases.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Check Xavier initialization (values within 3 * stddev and mean near 0)
-        //double stddev = std::sqrt(2.0 / (layer_inputs_ + layer_neurons_));
-        double stddev = std::sqrt(2.0 / (layer_inputs_ + 1));
-        errorMsg = contextName + ": Weight out of Xavier range";
-        double weight_mean = weights.mean();
-        for (int i = 0; i < weights.rows(); ++i) {
-            for (int j = 0; j < weights.cols(); ++j) {
-                assertTrue(std::abs(weights(i, j)) < 3 * stddev, errorMsg, __FILE__, __LINE__);
-            }
-        }
-        errorMsg = contextName + ": Weight mean not near zero";
-        //assertApprox(weight_mean, 0.0, TOL * 10, errorMsg, __FILE__, __LINE__);
-        assertApprox(weight_mean, 0.0, 0.5, errorMsg, __FILE__, __LINE__);
-
-        errorMsg = contextName + ": Bias out of Xavier range";
-        double bias_mean = biases.mean();
-        for (int i = 0; i < biases.size(); ++i) {
-            assertTrue(std::abs(biases(i)) < 3 * stddev, errorMsg, __FILE__, __LINE__);
-        }
-        errorMsg = contextName + ": Bias mean not near zero";
-        //assertApprox(bias_mean, 0.0, TOL * 10, errorMsg, __FILE__, __LINE__);
-        assertApprox(bias_mean, 0.0, 0.5, errorMsg, __FILE__, __LINE__);
-
-        // Store weights and biases for CPU-GPU comparison
-        if (contextName == "CPUContext") {
-            cpu_weights = weights;
-            cpu_biases = biases;
-        }
-        else {
-            gpu_weights = weights;
-            gpu_biases = biases;
-        }
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Weights:\n" << weights << "\n";
-        std::cout << "Weight Mean: " << weight_mean << "\n";
-        std::cout << "Biases: " << biases.transpose() << "\n";
-        std::cout << "Bias Mean: " << bias_mean << "\n";
-        std::cout << "Test: " << contextName << " Passed\n\n";
-    }
-
-    // Compare CPU and GPU weights and biases (same seed should produce identical results)
-    std::cout << "Test: Compare CPU and GPU weights and biases\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU weights differ";
-    for (int i = 0; i < cpu_weights.rows(); ++i) {
-        for (int j = 0; j < cpu_weights.cols(); ++j) {
-            if (std::abs(cpu_weights(i, j) - gpu_weights(i, j)) > TOL) {
-                passed = false;
-                assertApprox(cpu_weights(i, j), gpu_weights(i, j), TOL, errorMsg, __FILE__, __LINE__);
-            }
+// Helper function to assert matrix approximations
+// This checks if two Eigen matrices are approximately equal element-wise within a tolerance.
+// Beginner note: Matrices hold weights or gradients; we compare them to ensure calculations match.
+void NeuralNetworkTest::assertMatrixApprox(const Eigen::MatrixXd& a, const Eigen::MatrixXd& b, double tol, const std::string& message, const char* file, int line) {
+    assertTrue(a.rows() == b.rows() && a.cols() == b.cols(), "Matrix size mismatch in " + message, file, line);
+    for (Eigen::Index r = 0; r < a.rows(); ++r) {
+        for (Eigen::Index c = 0; c < a.cols(); ++c) {
+            assertApprox(a(r, c), b(r, c), tol, message + " at (" + std::to_string(r) + "," + std::to_string(c) + ")", file, line);
         }
     }
-    errorMsg = "CPU and GPU biases differ";
-    for (int i = 0; i < cpu_biases.size(); ++i) {
-        if (std::abs(cpu_biases(i) - gpu_biases(i)) > TOL) {
-            passed = false;
-            assertApprox(cpu_biases(i), gpu_biases(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print comparison results
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerConstructor Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testLayerConstructor Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testLayerForward() {
-    std::cout << "----- Running testLayerForward... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-
-    // Test 1: CPU and GPU context with random seed
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerForward\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << " with random seed\n";
-        std::random_device rd;
-        unsigned int random_seed = rd();
-        std::mt19937 rng(random_seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, random_seed);
-
-        // Set known weights and biases
-        Eigen::MatrixXd weights(layer_neurons_, layer_inputs_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            for (int j = 0; j < layer_inputs_; ++j) {
-                weights(i, j) = dist(rng);
-            }
-        }
-        Eigen::VectorXd biases(layer_neurons_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            biases(i) = dist(rng);
-        }
-        layer.set_weights(weights);
-        layer.set_biases(biases);
-
-        // Random input
-        Eigen::VectorXd input(layer_inputs_);
-        for (int i = 0; i < layer_inputs_; ++i) {
-            input(i) = dist(rng);
-        }
-
-        // Compute expected output: z = W * input + b, a = activation(z)
-        Eigen::VectorXd z = weights * input + biases;
-        Eigen::VectorXd expected = computeActivation(z);
-
-        // Run forward pass
-        Eigen::VectorXd output = layer.forward(input);
-
-        // Check output size
-        errorMsg = contextName + ": Incorrect output size";
-        assertTrue(output.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Check sigmoid range
-        errorMsg = contextName + ": Output not in sigmoid range";
-        for (int i = 0; i < output.size(); ++i) {
-            assertTrue(output(i) >= 0.0 && output(i) <= 1.0, errorMsg, __FILE__, __LINE__);
-        }
-
-        // Check output against expected
-        bool passed = true;
-        errorMsg = contextName + ": Output mismatch";
-        for (int i = 0; i < output.size(); ++i) {
-            if (std::abs(output(i) - expected(i)) > TOL) {
-                passed = false;
-                assertApprox(output(i), expected(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Check stored activations
-        errorMsg = contextName + ": Stored activation mismatch";
-        const auto& activations = layer.get_activations();
-        for (int i = 0; i < output.size(); ++i) {
-            assertApprox(activations(i), output(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Input: " << input.transpose() << "\n";
-        std::cout << "Weights:\n" << weights << "\n";
-        std::cout << "Biases: " << biases.transpose() << "\n";
-        std::cout << "Output: " << output.transpose() << "\n";
-        std::cout << "Expected: " << expected.transpose() << "\n";
-        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
-
-        if (!passed) {
-            all_passed = false;
-            std::cerr << "Test: " << contextName << " failed\n";
-            return false;
-        }
-    }
-
-    // Test 2: Compare CPU and GPU contexts with fixed seed and input
-    std::cout << "Test: Compare CPU and GPU contexts with fixed seed\n";
-    Eigen::VectorXd cpu_output, gpu_output;
-    Eigen::MatrixXd weights(layer_neurons_, layer_inputs_);
-    Eigen::VectorXd biases(layer_neurons_);
-    Eigen::VectorXd input(layer_inputs_);
-    unsigned int fixed_seed = 42;
-
-    // Set up weights, biases, and input
-    std::mt19937 rng(fixed_seed);
-    std::normal_distribution<double> dist(0.0, 1.0);
-    for (int i = 0; i < layer_neurons_; ++i) {
-        for (int j = 0; j < layer_inputs_; ++j) {
-            weights(i, j) = dist(rng);
-        }
-        biases(i) = dist(rng);
-    }
-    for (int i = 0; i < layer_inputs_; ++i) {
-        input(i) = dist(rng);
-    }
-
-    // Compute expected output
-    Eigen::VectorXd z = weights * input + biases;
-    Eigen::VectorXd expected = computeActivation(z);
-
-    // Run forward pass for both contexts
-    bool passed = true;
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerForward\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, fixed_seed);
-        layer.set_weights(weights);
-        layer.set_biases(biases);
-
-        Eigen::VectorXd output = layer.forward(input);
-        if (contextName == "CPUContext") {
-            cpu_output = output;
-        }
-        else {
-            gpu_output = output;
-        }
-
-        // Check output size
-        errorMsg = contextName + ": Incorrect output size";
-        assertTrue(output.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Check sigmoid range
-        errorMsg = contextName + ": Output not in sigmoid range";
-        for (int i = 0; i < output.size(); ++i) {
-            assertTrue(output(i) >= 0.0 && output(i) <= 1.0, errorMsg, __FILE__, __LINE__);
-        }
-
-        // Check output against expected
-        errorMsg = contextName + ": Output mismatch";
-        for (int i = 0; i < output.size(); ++i) {
-            if (std::abs(output(i) - expected(i)) > TOL) {
-                passed = false;
-                assertApprox(output(i), expected(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Check stored activations
-        errorMsg = contextName + ": Stored activation mismatch";
-        const auto& activations = layer.get_activations();
-        for (int i = 0; i < output.size(); ++i) {
-            assertApprox(activations(i), output(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Compare CPU and GPU outputs
-    errorMsg = "CPU and GPU outputs differ";
-    for (int i = 0; i < cpu_output.size(); ++i) {
-        if (std::abs(cpu_output(i) - gpu_output(i)) > TOL) {
-            passed = false;
-            assertApprox(cpu_output(i), gpu_output(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print details
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "Input: " << input.transpose() << "\n";
-    std::cout << "Weights:\n" << weights << "\n";
-    std::cout << "Biases: " << biases.transpose() << "\n";
-    std::cout << "CPU Output: " << cpu_output.transpose() << "\n";
-    std::cout << "GPU Output: " << gpu_output.transpose() << "\n";
-    std::cout << "Expected: " << expected.transpose() << "\n";
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerForward Passed -----\n\n";
-    }
-
-    else {
-        std::cout << "----- testLayerForward Failed -----\n\n";
-    }
-
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testLayerGradients()
-{
-    std::cout << "----- Running testLayerGradients... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    Eigen::MatrixXd cpu_weight_grads, gpu_weight_grads;
-    Eigen::VectorXd cpu_bias_grads, gpu_bias_grads;
-
-    // Test CPU and GPU contexts
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerGradients\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        // Initialize layer with random weights and biases
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
-        std::mt19937 rng(seed_);
-        std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / (layer_inputs_ + 1)));
-        Eigen::MatrixXd weights(layer_neurons_, layer_inputs_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            for (int j = 0; j < layer_inputs_; ++j) {
-                weights(i, j) = dist(rng);
-            }
-        }
-        Eigen::VectorXd biases(layer_neurons_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            biases(i) = dist(rng);
-        }
-        layer.set_weights(weights);
-        layer.set_biases(biases);
-
-        // Initialize input
-        Eigen::VectorXd input(layer_inputs_);
-        for (int i = 0; i < layer_inputs_; ++i) {
-            input(i) = (i % 2 == 0) ? 1.0 : -1.0; // Alternating 1.0, -1.0
-        }
-
-        // Run forward pass
-        Eigen::VectorXd output = layer.forward(input);
-
-        // Check pre-activations
-        const auto& zs = layer.get_pre_activations();
-        Eigen::VectorXd expected_z = weights * input + biases;
-        errorMsg = contextName + ": Incorrect pre-activations";
-        for (int i = 0; i < zs.size(); ++i) {
-            assertApprox(zs(i), expected_z(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-
-        // Initialize deltas
-        Eigen::VectorXd deltas(layer_neurons_);
-        deltas.setConstant(0.1); // Simple deltas
-
-        // Compute gradients
-        Eigen::MatrixXd weight_grads;
-        Eigen::VectorXd bias_grads;
-        layer.compute_gradients(deltas, weight_grads, bias_grads);
-
-        // Check gradient sizes
-        errorMsg = contextName + ": Incorrect weight gradient size";
-        assertTrue(weight_grads.rows() == layer_neurons_ && weight_grads.cols() == layer_inputs_,
-            errorMsg, __FILE__, __LINE__);
-        errorMsg = contextName + ": Incorrect bias gradient size";
-        assertTrue(bias_grads.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Compute expected gradients using activation derivative
-        Eigen::VectorXd derivs = computeActivationDerivative(zs);
-        Eigen::MatrixXd expected_weight_grads(layer_neurons_, layer_inputs_);
-        Eigen::VectorXd expected_bias_grads(layer_neurons_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            expected_bias_grads(i) = deltas(i) * derivs(i);
-            for (int j = 0; j < layer_inputs_; ++j) {
-                expected_weight_grads(i, j) = deltas(i) * derivs(i) * input(j);
-            }
-        }
-
-        // Check gradients
-        bool passed = true;
-        errorMsg = contextName + ": Weight gradient incorrect";
-        for (int i = 0; i < layer_neurons_; ++i) {
-            for (int j = 0; j < layer_inputs_; ++j) {
-                if (std::abs(weight_grads(i, j) - expected_weight_grads(i, j)) > TOL) {
-                    passed = false;
-                    assertApprox(weight_grads(i, j), expected_weight_grads(i, j), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-
-        errorMsg = contextName + ": Bias gradient incorrect";
-        for (int i = 0; i < layer_neurons_; ++i) {
-            if (std::abs(bias_grads(i) - expected_bias_grads(i)) > TOL) {
-                passed = false;
-                assertApprox(bias_grads(i), expected_bias_grads(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Store gradients for CPU-GPU comparison
-        if (contextName == "CPUContext") {
-            cpu_weight_grads = weight_grads;
-            cpu_bias_grads = bias_grads;
-        }
-        else {
-            gpu_weight_grads = weight_grads;
-            gpu_bias_grads = bias_grads;
-        }
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Input: " << input.transpose() << "\n";
-        std::cout << "Weights:\n" << weights << "\n";
-        std::cout << "Biases: " << biases.transpose() << "\n";
-        std::cout << "Deltas: " << deltas.transpose() << "\n";
-        std::cout << "Pre-activations: " << zs.transpose() << "\n";
-        //std::cout << "Derivatives: " << derivs.transpose() << "\n";
-        std::cout << "Weight Gradients:\n" << weight_grads << "\n";
-        std::cout << "Bias Gradients: " << bias_grads.transpose() << "\n";
-        std::cout << "Expected Weight Gradients:\n" << expected_weight_grads << "\n";
-        std::cout << "Expected Bias Gradients: " << expected_bias_grads.transpose() << "\n";
-        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
-
-        if (!passed) {
-            all_passed = false;
-            std::cerr << "Test: " << contextName << " failed\n";
-            return false;
-        }
-    }
-
-    // Compare CPU and GPU gradients
-    std::cout << "Test: Compare CPU and GPU gradients\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU weight gradients differ";
-    for (int i = 0; i < cpu_weight_grads.rows(); ++i) {
-        for (int j = 0; j < cpu_weight_grads.cols(); ++j) {
-            if (std::abs(cpu_weight_grads(i, j) - gpu_weight_grads(i, j)) > TOL) {
-                passed = false;
-                assertApprox(cpu_weight_grads(i, j), gpu_weight_grads(i, j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-    }
-    errorMsg = "CPU and GPU bias gradients differ";
-    for (int i = 0; i < cpu_bias_grads.size(); ++i) {
-        if (std::abs(cpu_bias_grads(i) - gpu_bias_grads(i)) > TOL) {
-            passed = false;
-            assertApprox(cpu_bias_grads(i), gpu_bias_grads(i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print comparison results
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerGradients Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testLayerGradients Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testLayerUpdateParameters() {
-    std::cout << "----- Running testLayerUpdateParameters... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    std::map<std::string, Eigen::MatrixXd> weights_map, updated_weights_map;
-    std::map<std::string, Eigen::VectorXd> biases_map, updated_biases_map;
-
-    // Test CPU and GPU contexts
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerUpdateParameters\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        // Initialize layer with random weights and biases
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
-        std::mt19937 rng(seed_);
-        std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / (layer_inputs_ + 1)));
-        Eigen::MatrixXd weights(layer_neurons_, layer_inputs_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            for (int j = 0; j < layer_inputs_; ++j) {
-                weights(i, j) = dist(rng);
-            }
-        }
-        Eigen::VectorXd biases(layer_neurons_);
-        for (int i = 0; i < layer_neurons_; ++i) {
-            biases(i) = dist(rng);
-        }
-        layer.set_weights(weights);
-        layer.set_biases(biases);
-
-        // Initialize gradients
-        Eigen::MatrixXd weight_grads(layer_neurons_, layer_inputs_);
-        weight_grads.setConstant(0.1);
-        Eigen::VectorXd bias_grads(layer_neurons_);
-        bias_grads.setConstant(0.1);
-
-        // Store original parameters
-        auto old_weights = layer.get_weights();
-        auto old_biases = layer.get_biases();
-
-        // Update parameters
-        layer.update_parameters(weight_grads, bias_grads);
-
-        // Check updated parameters
-        const auto& new_weights = layer.get_weights();
-        const auto& new_biases = layer.get_biases();
-        bool passed = true;
-        errorMsg = contextName + ": Weight update incorrect";
-        for (int i = 0; i < layer_neurons_; ++i) {
-            for (int j = 0; j < layer_inputs_; ++j) {
-                if (std::abs(new_weights(i, j) - (old_weights(i, j) - weight_grads(i, j))) > TOL) {
-                    passed = false;
-                    assertApprox(new_weights(i, j), old_weights(i, j) - weight_grads(i, j), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-        errorMsg = contextName + ": Bias update incorrect";
-        for (int i = 0; i < layer_neurons_; ++i) {
-            if (std::abs(new_biases(i) - (old_biases(i) - bias_grads(i))) > TOL) {
-                passed = false;
-                assertApprox(new_biases(i), old_biases(i) - bias_grads(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Store weights and biases for comparison
-        weights_map[contextName] = old_weights;
-        updated_weights_map[contextName] = new_weights;
-        biases_map[contextName] = old_biases;
-        updated_biases_map[contextName] = new_biases;
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Original Weights:\n" << old_weights << "\n";
-        std::cout << "Weight Gradients:\n" << weight_grads << "\n";
-        std::cout << "Updated Weights:\n" << new_weights << "\n";
-        std::cout << "Original Biases: " << old_biases.transpose() << "\n";
-        std::cout << "Bias Gradients: " << bias_grads.transpose() << "\n";
-        std::cout << "Updated Biases: " << new_biases.transpose() << "\n";
-        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
-
-        if (!passed) {
-            all_passed = false;
-            std::cerr << "Test: " << contextName << " failed\n";
-            return false;
-        }
-    }
-
-    // Compare CPU and GPU parameters
-    std::cout << "Test: Compare CPU and GPU parameters\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU weights differ before update";
-    for (int i = 0; i < layer_neurons_; ++i) {
-        for (int j = 0; j < layer_inputs_; ++j) {
-            if (std::abs(weights_map["CPUContext"](i, j) - weights_map["GPUContext"](i, j)) > TOL) {
-                passed = false;
-                assertApprox(weights_map["CPUContext"](i, j), weights_map["GPUContext"](i, j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-    }
-
-    errorMsg = "CPU and GPU biases differ before update";
-    for (int i = 0; i < layer_neurons_; ++i) {
-        if (std::abs(biases_map["CPUContext"](i) - biases_map["GPUContext"](i)) > TOL) {
-            passed = false;
-            assertApprox(biases_map["CPUContext"](i), biases_map["GPUContext"](i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    errorMsg = "CPU and GPU updated weights differ";
-    for (int i = 0; i < layer_neurons_; ++i) {
-        for (int j = 0; j < layer_inputs_; ++j) {
-            if (std::abs(updated_weights_map["CPUContext"](i, j) - updated_weights_map["GPUContext"](i, j)) > TOL) {
-                passed = false;
-                assertApprox(updated_weights_map["CPUContext"](i, j), updated_weights_map["GPUContext"](i, j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-    }
-    errorMsg = "CPU and GPU updated biases differ";
-    for (int i = 0; i < layer_neurons_; ++i) {
-        if (std::abs(updated_biases_map["CPUContext"](i) - updated_biases_map["GPUContext"](i)) > TOL) {
-            passed = false;
-            assertApprox(updated_biases_map["CPUContext"](i), updated_biases_map["GPUContext"](i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print comparison results
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerUpdateParameters Passed -----\n";
-    }
-    else {
-        std::cout << "----- testLayerUpdateParameters Failed -----\n";
-    }
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testLayerComputeActivationDerivative()
-{
-    std::cout << "----- Running testLayerComputeActivationDerivative... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    std::map<std::string, Eigen::VectorXd> derivatives_map;
-
-    // Test CPU and GPU contexts
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerComputeActivationDerivative\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        // Initialize layer
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
-        
-        // Initialize pre-activations and activations
-        Eigen::VectorXd pre_activations(layer_neurons_);
-        pre_activations << 0.0, 1.0, -1.0; // Simple test values
-        Eigen::VectorXd activations = computeActivation(pre_activations);
-
-        // Compute expected derivatives
-        Eigen::VectorXd expected_derivatives = computeActivationDerivative(pre_activations);
-
-        // Compute derivatives using context
-        Eigen::VectorXd derivatives = context->computeActivationDerivative(activations, pre_activations, activation_.get());
-        
-        // Check derivative size
-        errorMsg = contextName + ": Incorrect derivative size";
-        assertTrue(derivatives.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Check derivative size
-        errorMsg = contextName + ": Incorrect derivative size";
-        assertTrue(derivatives.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-        // Check derivatives against expected
-        bool passed = true;
-        errorMsg = contextName + ": Derivative incorrect";
-        for (int i = 0; i < derivatives.size(); ++i) {
-            if (std::abs(derivatives(i) - expected_derivatives(i)) > TOL) {
-                passed = false;
-                assertApprox(derivatives(i), expected_derivatives(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Store derivatives for CPU-GPU comparison
-        derivatives_map[contextName] = derivatives;
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Pre-activations: " << pre_activations.transpose() << "\n";
-        std::cout << "Activations: " << activations.transpose() << "\n";
-        std::cout << "Derivatives: " << derivatives.transpose() << "\n";
-        std::cout << "Expected Derivatives: " << expected_derivatives.transpose() << "\n";
-        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
-
-        if (!passed) {
-            all_passed = false;
-            std::cerr << "Test: " << contextName << " failed\n";
-            return false;
-        }
-    }
-
-    // Compare CPU and GPU derivatives
-    std::cout << "Test: Compare CPU and GPU derivatives\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU derivatives differ";
-    for (int i = 0; i < derivatives_map["CPUContext"].size(); ++i) {
-        if (std::abs(derivatives_map["CPUContext"](i) - derivatives_map["GPUContext"](i)) > TOL) {
-            passed = false;
-            assertApprox(derivatives_map["CPUContext"](i), derivatives_map["GPUContext"](i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print comparison results
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerComputeActivationDerivative Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testLayerComputeActivationDerivative Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testLayerComputeActivationDerivativeGPU()
-{
-    std::cout << "----- Running testLayerComputeActivationDerivative... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    std::map<std::string, Eigen::VectorXd> derivatives_map;
-
-    // Test CPU and GPU contexts
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testLayerComputeActivationDerivative\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        // Initialize layer
-        Layer layer(layer_inputs_, layer_neurons_, activation_.get(), context, seed_);
-
-        // Initialize pre-activations and activations
-        Eigen::VectorXd pre_activations(layer_neurons_);
-        pre_activations << 0.0, 1.0, -1.0; // Simple test values
-        
-        Eigen::VectorXd activations = computeActivation(pre_activations);
-        layer.set_pre_activations(pre_activations);
-        layer.set_activations(activations);
-
-        // Compute expected derivatives
-        Eigen::VectorXd expected_derivatives = computeActivationDerivative(pre_activations);
-
-        // Compute derivatives using context
-        Eigen::VectorXd derivatives;
-        if (contextName == "GPUContext") {
-            derivatives = context->computeActivationDerivativeGPU(layer.get_d_activations_(), layer.get_d_pre_activations_(), layer.get_d_dy(), layer.get_d_derivatives(), layer.get_num_neurons(), activation_.get());
-        }
-        else {
-            derivatives = context->computeActivationDerivative(activations, pre_activations, activation_.get());
-        }
-        
-        // Check derivative size
-        errorMsg = contextName + ": Incorrect derivative size";
-        assertTrue(derivatives.size() == layer_neurons_, errorMsg, __FILE__, __LINE__);
-
-       
-        // Check derivatives against expected
-        bool passed = true;
-        errorMsg = contextName + ": Derivative incorrect";
-        for (int i = 0; i < derivatives.size(); ++i) {
-            if (std::abs(derivatives(i) - expected_derivatives(i)) > TOL) {
-                passed = false;
-                assertApprox(derivatives(i), expected_derivatives(i), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        // Store derivatives for CPU-GPU comparison
-        derivatives_map[contextName] = derivatives;
-
-        // Print details
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Pre-activations: " << pre_activations.transpose() << "\n";
-        std::cout << "Activations: " << activations.transpose() << "\n";
-        std::cout << "Derivatives: " << derivatives.transpose() << "\n";
-        std::cout << "Expected Derivatives: " << expected_derivatives.transpose() << "\n";
-        std::cout << "Test: " << contextName << " " << (passed ? "Passed" : "Failed") << "\n\n";
-
-        if (!passed) {
-            all_passed = false;
-            std::cerr << "Test: " << contextName << " failed\n";
-            return false;
-        }
-    }
-
-    // Compare CPU and GPU derivatives
-    std::cout << "Test: Compare CPU and GPU derivatives\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU derivatives differ";
-    for (int i = 0; i < derivatives_map["CPUContext"].size(); ++i) {
-        if (std::abs(derivatives_map["CPUContext"](i) - derivatives_map["GPUContext"](i)) > TOL) {
-            passed = false;
-            assertApprox(derivatives_map["CPUContext"](i), derivatives_map["GPUContext"](i), TOL, errorMsg, __FILE__, __LINE__);
-        }
-    }
-
-    // Print comparison results
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testLayerComputeActivationDerivative Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testLayerComputeActivationDerivative Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testUpdateMiniBatchSimplified()
-{
-    std::cout << "----- Running testUpdateMiniBatchSimplified... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = {
-        {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
-        {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)}
-    };
-    double eta = 0.1;
-    size_t n = 2;
-    unsigned int seed = 42;
-
-    std::vector<int> sizes = { 2, 3, 2 };
-    std::map<std::string, std::vector<Eigen::MatrixXd>> weights_map;
-    std::map<std::string, std::vector<Eigen::VectorXd>> biases_map;
-
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testUpdateMiniBatchSimplified\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-        Network net(sizes, 0, Network::LossType::MSE, Network::NeuronType::SIGMOID, context, seed);
-
-        double norm = net.update_mini_batch(mini_batch, eta, n);
-
-        std::vector<Eigen::MatrixXd> weights;
-        std::vector<Eigen::VectorXd> biases;
-        for (const auto& layer : net.get_layers()) {
-            weights.push_back(layer->get_weights());
-            biases.push_back(layer->get_biases());
-        }
-
-        weights_map[contextName] = weights;
-        biases_map[contextName] = biases;
-
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Gradient Norm: " << norm << "\n";
-        for (size_t i = 0; i < net.get_layers().size(); ++i) {
-            std::cout << "Layer " << i << " Updated Weights:\n" << weights[i] << "\n";
-            std::cout << "Layer " << i << " Updated Biases: " << biases[i].transpose() << "\n";
-        }
-        std::cout << "Test: " << contextName << " Passed\n";
-    }
-
-    std::cout << "\nTest: Manual calculations\n";
-    std::vector<Eigen::MatrixXd> manual_weights;
-    std::vector<Eigen::VectorXd> manual_biases;
-    {
-        Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, computeContexts[0], seed);
-        double scale = eta / mini_batch.size();
-
-        std::vector<Eigen::MatrixXd> weights;
-        std::vector<Eigen::VectorXd> biases;
-        for (const auto& layer : net.get_layers()) {
-            weights.push_back(layer->get_weights());
-            biases.push_back(layer->get_biases());
-        }
-
-        std::vector<Eigen::MatrixXd> weight_grads;
-        std::vector<Eigen::VectorXd> bias_grads;
-        for (size_t i = 0; i < biases.size(); ++i) {
-            weight_grads.emplace_back(Eigen::MatrixXd::Zero(weights[i].rows(), weights[i].cols()));
-            bias_grads.emplace_back(Eigen::VectorXd::Zero(biases[i].size()));
-        }
-
-        for (const auto& [x, y] : mini_batch) {
-            auto [delta_nabla_b, delta_nabla_w] = net.backprop(x, y, n);
-            for (size_t i = 0; i < delta_nabla_w.size(); ++i) {
-                weight_grads[i] += delta_nabla_w[i];
-                bias_grads[i] += delta_nabla_b[i];
-            }
-        }
-
-        double norm = 0.0;
-        for (size_t i = 0; i < weight_grads.size(); ++i) {
-            norm += weight_grads[i].squaredNorm();
-            norm += bias_grads[i].squaredNorm();
-        }
-        norm = std::sqrt(norm / mini_batch.size());
-
-        for (size_t i = 0; i < weights.size(); ++i) {
-            weights[i] -= scale * weight_grads[i];
-            biases[i] -= scale * bias_grads[i];
-        }
-
-        manual_weights = weights;
-        manual_biases = biases;
-
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Gradient Norm: " << norm << "\n";
-        for (size_t i = 0; i < weights.size(); ++i) {
-            std::cout << "Layer " << i << " Updated Weights:\n" << weights[i] << "\n";
-            std::cout << "Layer " << i << " Updated Biases: " << biases[i].transpose() << "\n";
-        }
-        std::cout << "Test: Manual calculations Passed\n";
-    }
-
-    std::cout << "\nTest: Compare CPU, GPU, and Manual updated parameters\n";
-    bool passed = true;
-    for (size_t i = 0; i < sizes.size() - 1; ++i) {
-        errorMsg = "CPU and GPU weights differ in layer " + std::to_string(i);
-        for (int r = 0; r < weights_map["CPUContext"][i].rows(); ++r) {
-            for (int c = 0; c < weights_map["CPUContext"][i].cols(); ++c) {
-                double diff = std::abs(weights_map["CPUContext"][i](r, c) - weights_map["GPUContext"][i](r, c));
-                if (diff > TOL) {
-                    std::cerr << "CPU-GPU weight mismatch in layer " << i << " at (" << r << "," << c << "): "
-                        << weights_map["CPUContext"][i](r, c) << " vs "
-                        << weights_map["GPUContext"][i](r, c) << " (diff = " << diff << ")\n";
-                    passed = false;
-                    assertApprox(weights_map["CPUContext"][i](r, c), weights_map["GPUContext"][i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-        errorMsg = "CPU and GPU biases differ in layer " + std::to_string(i);
-        for (int j = 0; j < biases_map["CPUContext"][i].size(); ++j) {
-            double diff = std::abs(biases_map["CPUContext"][i](j) - biases_map["GPUContext"][i](j));
-            if (diff > TOL) {
-                std::cerr << "CPU-GPU bias mismatch in layer " << i << " at index " << j << ": "
-                    << biases_map["CPUContext"][i](j) << " vs "
-                    << biases_map["GPUContext"][i](j) << " (diff = " << diff << ")\n";
-                passed = false;
-                assertApprox(biases_map["CPUContext"][i](j), biases_map["GPUContext"][i](j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        errorMsg = "CPU and Manual weights differ in layer " + std::to_string(i);
-        for (int r = 0; r < weights_map["CPUContext"][i].rows(); ++r) {
-            for (int c = 0; c < weights_map["CPUContext"][i].cols(); ++c) {
-                double diff = std::abs(weights_map["CPUContext"][i](r, c) - manual_weights[i](r, c));
-                if (diff > TOL) {
-                    std::cerr << "CPU-Manual weight mismatch in layer " << i << " at (" << r << "," << c << "): "
-                        << weights_map["CPUContext"][i](r, c) << " vs "
-                        << manual_weights[i](r, c) << " (diff = " << diff << ")\n";
-                    passed = false;
-                    assertApprox(weights_map["CPUContext"][i](r, c), manual_weights[i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-        errorMsg = "CPU and Manual biases differ in layer " + std::to_string(i);
-        for (int j = 0; j < biases_map["CPUContext"][i].size(); ++j) {
-            double diff = std::abs(biases_map["CPUContext"][i](j) - manual_biases[i](j));
-            if (diff > TOL) {
-                std::cerr << "CPU-Manual bias mismatch in layer " << i << " at index " << j << ": "
-                    << biases_map["CPUContext"][i](j) << " vs "
-                    << manual_biases[i](j) << " (diff = " << diff << ")\n";
-                passed = false;
-                assertApprox(biases_map["CPUContext"][i](j), manual_biases[i](j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-
-        errorMsg = "GPU and Manual weights differ in layer " + std::to_string(i);
-        for (int r = 0; r < weights_map["GPUContext"][i].rows(); ++r) {
-            for (int c = 0; c < weights_map["GPUContext"][i].cols(); ++c) {
-                double diff = std::abs(weights_map["GPUContext"][i](r, c) - manual_weights[i](r, c));
-                if (diff > TOL) {
-                    std::cerr << "GPU-Manual weight mismatch in layer " << i << " at (" << r << "," << c << "): "
-                        << weights_map["GPUContext"][i](r, c) << " vs "
-                        << manual_weights[i](r, c) << " (diff = " << diff << ")\n";
-                    passed = false;
-                    assertApprox(weights_map["GPUContext"][i](r, c), manual_weights[i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-        errorMsg = "GPU and Manual biases differ in layer " + std::to_string(i);
-        for (int j = 0; j < biases_map["GPUContext"][i].size(); ++j) {
-            double diff = std::abs(biases_map["GPUContext"][i](j) - manual_biases[i](j));
-            if (diff > TOL) {
-                std::cerr << "GPU-Manual bias mismatch in layer " << i << " at index " << j << ": "
-                    << biases_map["GPUContext"][i](j) << " vs "
-                    << manual_biases[i](j) << " (diff = " << diff << ")\n";
-                passed = false;
-                assertApprox(biases_map["GPUContext"][i](j), manual_biases[i](j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-    }
-    std::cout << "Test: Compare CPU, GPU, and Manual " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) all_passed = false;
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testUpdateMiniBatchSimplified Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testUpdateMiniBatchSimplified Failed -----\n\n";
-    }
-
-    return all_passed;
-}
-
-bool NeuralNetworkTest::testBackpropGradientComputation()
-{
-    std::cout << "----- Running testBackpropGradientComputation... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-    std::map<std::string, std::vector<Eigen::MatrixXd>> nabla_w_map;
-    std::map<std::string, std::vector<Eigen::VectorXd>> nabla_b_map;
-
-    std::vector<int> sizes = { 2, 3, 2 };
-    unsigned int seed = 42;
-    Eigen::VectorXd x(2);
-    x << 0.5, 0.3;
-    Eigen::VectorXd y(2);
-    y << 1.0, 0.0;
-    size_t n = 2;
-
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            std::cerr << "Unknown computation context in testBackpropGradientComputation\n";
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-
-        Network net(sizes, 0, Network::LossType::MSE, Network::NeuronType::SIGMOID, context, seed);
-        auto [nabla_b, nabla_w] = net.backprop(x, y, n);
-
-        errorMsg = contextName + ": Incorrect number of gradient vectors";
-        assertTrue(nabla_b.size() == sizes.size() - 1 && nabla_w.size() == sizes.size() - 1,
-            errorMsg, __FILE__, __LINE__);
-
-        for (size_t i = 0; i < nabla_b.size(); ++i) {
-            errorMsg = contextName + ": Incorrect bias gradient size in layer " + std::to_string(i);
-            assertTrue(nabla_b[i].size() == sizes[i + 1], errorMsg, __FILE__, __LINE__);
-            errorMsg = contextName + ": Incorrect weight gradient size in layer " + std::to_string(i);
-            assertTrue(nabla_w[i].rows() == sizes[i + 1] && nabla_w[i].cols() == sizes[i],
-                errorMsg, __FILE__, __LINE__);
-        }
-
-        nabla_b_map[contextName] = nabla_b;
-        nabla_w_map[contextName] = nabla_w;
-
-        std::cout << std::fixed << std::setprecision(6);
-        for (size_t i = 0; i < nabla_w.size(); ++i) {
-            std::cout << "Layer " << i << " Weight Gradients:\n" << nabla_w[i] << "\n";
-            std::cout << "Layer " << i << " Bias Gradients: " << nabla_b[i].transpose() << "\n";
-        }
-        std::cout << "Test: " << contextName << " Passed\n\n";
-    }
-
-    std::cout << "Test: Compare CPU and GPU gradients\n";
-    bool passed = true;
-    for (size_t i = 0; i < sizes.size() - 1; ++i) {
-        errorMsg = "CPU and GPU weight gradients differ in layer " + std::to_string(i);
-        for (int r = 0; r < nabla_w_map["CPUContext"][i].rows(); ++r) {
-            for (int c = 0; c < nabla_w_map["CPUContext"][i].cols(); ++c) {
-                double diff = std::abs(nabla_w_map["CPUContext"][i](r, c) - nabla_w_map["GPUContext"][i](r, c));
-                if (diff > TOL) {
-                    std::cerr << "CPU-GPU weight gradient mismatch in layer " << i << " at (" << r << "," << c << "): "
-                        << nabla_w_map["CPUContext"][i](r, c) << " vs "
-                        << nabla_w_map["GPUContext"][i](r, c) << " (diff = " << diff << ")\n";
-                    passed = false;
-                    assertApprox(nabla_w_map["CPUContext"][i](r, c), nabla_w_map["GPUContext"][i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                }
-            }
-        }
-        errorMsg = "CPU and GPU bias gradients differ in layer " + std::to_string(i);
-        for (int j = 0; j < nabla_b_map["CPUContext"][i].size(); ++j) {
-            double diff = std::abs(nabla_b_map["CPUContext"][i](j) - nabla_b_map["GPUContext"][i](j));
-            if (diff > TOL) {
-                std::cerr << "CPU-GPU bias gradient mismatch in layer " << i << " at index " << j << ": "
-                    << nabla_b_map["CPUContext"][i](j) << " vs "
-                    << nabla_b_map["GPUContext"][i](j) << " (diff = " << diff << ")\n";
-                passed = false;
-                assertApprox(nabla_b_map["CPUContext"][i](j), nabla_b_map["GPUContext"][i](j), TOL, errorMsg, __FILE__, __LINE__);
-            }
-        }
-    }
-
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (!passed) {
-        all_passed = false;
-        std::cerr << "Test: Compare CPU and GPU failed\n";
-    }
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testBackpropGradientComputation Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testBackpropGradientComputation Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-
-void NeuralNetworkTest::testNetworkConstructor()
-{
-    std::cout << "Running testNetworkConstructor... ";
-    ++total_tests_;
-    CPUComputationContext cpuContext;
-    Network net(network_sizes_, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, &cpuContext);
-
-    //assertTrue(net.evaluate({}, 0).first == 0, "Evaluate on empty data should return 0", __FILE__, __LINE__);
-    assertTrue(net.evaluate(std::vector<std::pair<Eigen::VectorXd, int>>{}, 0).first == 0,
-        "Evaluate on empty data should return 0", __FILE__, __LINE__);
-
-    auto [nabla_b, nabla_w] = net.backprop(Eigen::VectorXd(network_sizes_[0]), Eigen::VectorXd(network_sizes_.back()), 0);
-    assertTrue(nabla_b.size() == network_sizes_.size() - 1 && nabla_w.size() == network_sizes_.size() - 1,
-        "Incorrect number of layers", __FILE__, __LINE__);
-
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
-}
-
-void NeuralNetworkTest::testNetworkFeedforward()
-{
-    std::cout << "Running testNetworkFeedforward... ";
-    ++total_tests_;
-    Network net(network_sizes_);
-    Eigen::VectorXd input(network_sizes_[0]);
-    input.setConstant(1.0);
-    auto output = net.feedforward(input);
-
-    assertTrue(output.size() == network_sizes_.back(), "Incorrect output size", __FILE__, __LINE__);
-
-    for (int i = 0; i < output.size(); ++i) {
-        assertTrue(output(i) >= 0.0 && output(i) <= 1.0, "Output not in sigmoid range", __FILE__, __LINE__);
-    }
-
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
-}
-
-bool NeuralNetworkTest::testNetworkBackprop() {
-    std::cout << "----- Running testNetworkBackprop... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string errorMsg;
-    std::map<std::string, std::vector<Eigen::MatrixXd>> nabla_w_map;
-    std::map<std::string, std::vector<Eigen::VectorXd>> nabla_b_map;
-
-    // Network configuration: 2 input, 3 hidden, 2 output neurons
-    std::vector<int> sizes = { 2, 3, 2 };
-    unsigned int seed = 42;
-    Eigen::VectorXd x(2);
-    x << 0.5, 0.3; // Input vector
-    Eigen::VectorXd y(2);
-    y << 1.0, 0.0; // Target vector (one-hot for class 0)
-    size_t n = 2; // Number of training examples for L2 scaling (lambda = 0 here)
-    double TOL = 1e-6; // Tolerance for floating-point comparisons
-
-    // Predefined weights and biases for reproducibility
-    Eigen::MatrixXd weights1(3, 2); // Layer 1: 3 neurons x 2 inputs
-    weights1 << 0.15, 0.25,
-        0.20, 0.30,
-        0.35, 0.35;
-    Eigen::VectorXd biases1(3);
-    biases1 << 0.40, 0.45, 0.50;
-
-    Eigen::MatrixXd weights2(2, 3); // Layer 2: 2 neurons x 3 inputs
-    weights2 << 0.55, 0.60, 0.65,
-        0.70, 0.75, 0.80;
-    Eigen::VectorXd biases2(2);
-    biases2 << 0.85, 0.90;
-
-    // Manual gradient calculations for verification
-    // Forward pass for Layer 1: z1 = W1 * x + b1
-    Eigen::VectorXd z1 = weights1 * x + biases1; // (3x2) * (2x1) + (3x1) = (3x1)
-    // z1 = [0.15*0.5 + 0.25*0.3 + 0.40, 0.20*0.5 + 0.30*0.3 + 0.45, 0.35*0.5 + 0.35*0.3 + 0.50]
-    //    = [0.075 + 0.075 + 0.40, 0.10 + 0.09 + 0.45, 0.175 + 0.105 + 0.50]
-    //    = [0.55, 0.64, 0.78]
-    Eigen::VectorXd a1 = 1.0 / (1.0 + (-z1.array()).exp()); // Sigmoid activation
-    // a1 = [sigmoid(0.55), sigmoid(0.64), sigmoid(0.78)]
-    //    ? [0.634135, 0.654753, 0.685834]
-
-    // Forward pass for Layer 2: z2 = W2 * a1 + b2
-    Eigen::VectorXd z2 = weights2 * a1 + biases2; // (2x3) * (3x1) + (2x1)
-    Eigen::VectorXd a2 = 1.0 / (1.0 + (-z2.array()).exp()); // Sigmoid activation
-    // Compute numerically after a1 is exact
-
-    // Backward pass: Output layer (L=2)
-    Eigen::VectorXd cost_deriv = a2 - y; // MSE loss derivative: a2 - y
-    Eigen::VectorXd sigma_prime_z2 = a2.array() * (1.0 - a2.array()); // Sigmoid derivative
-    Eigen::VectorXd delta2 = cost_deriv.cwiseProduct(sigma_prime_z2); // delta2 = (a2 - y) .* sigmoid'(z2)
-    Eigen::MatrixXd nabla_w2_manual = delta2 * a1.transpose(); // nabla_w2 = delta2 * a1^T
-    Eigen::VectorXd nabla_b2_manual = delta2; // nabla_b2 = delta2
-
-    // Backward pass: Hidden layer (L=1)
-    Eigen::VectorXd sigma_prime_z1 = a1.array() * (1.0 - a1.array()); // Sigmoid derivative
-    Eigen::VectorXd delta1 = (weights2.transpose() * delta2).cwiseProduct(sigma_prime_z1);
-    Eigen::MatrixXd nabla_w1_manual = delta1 * x.transpose(); // nabla_w1 = delta1 * x^T
-    Eigen::VectorXd nabla_b1_manual = delta1; // nabla_b1 = delta1
-
-    // Store manual gradients
-    std::vector<Eigen::MatrixXd> nabla_w_manual = { nabla_w1_manual, nabla_w2_manual };
-    std::vector<Eigen::VectorXd> nabla_b_manual = { nabla_b1_manual, nabla_b2_manual };
-
-    // Test both CPU and GPU contexts
-    for (auto context : computeContexts) {
-        std::string contextName = dynamic_cast<CPUComputationContext*>(context) ? "CPUContext" : "GPUContext";
-        std::cout << "Test: " << contextName << "\n";
-
-        // Initialize network with fixed weights and biases
-        Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, context, seed);
-        net.set_layer_weights(0, weights1);
-        net.set_layer_biases(0, biases1);
-        net.set_layer_weights(1, weights2);
-        net.set_layer_biases(1, biases2);
-
-        // Run backpropagation
-        auto [nabla_b, nabla_w] = net.backprop(x, y, n);
-
-        // Verify gradient sizes
-        errorMsg = contextName + ": Incorrect number of gradient vectors";
-        assertTrue(nabla_b.size() == sizes.size() - 1 && nabla_w.size() == sizes.size() - 1,
-            errorMsg, __FILE__, __LINE__);
-        for (size_t i = 0; i < nabla_b.size(); ++i) {
-            errorMsg = contextName + ": Incorrect bias gradient size in layer " + std::to_string(i);
-            assertTrue(nabla_b[i].size() == sizes[i + 1], errorMsg, __FILE__, __LINE__);
-            errorMsg = contextName + ": Incorrect weight gradient size in layer " + std::to_string(i);
-            assertTrue(nabla_w[i].rows() == sizes[i + 1] && nabla_w[i].cols() == sizes[i],
-                errorMsg, __FILE__, __LINE__);
-        }
-
-        // Compare with manual calculations
-        std::cout << "Comparing " << contextName << " with manual calculations\n";
-        bool layer_passed = true;
-        for (size_t i = 0; i < nabla_b.size(); ++i) {
-            // Compare bias gradients
-            for (int j = 0; j < nabla_b[i].size(); ++j) {
-                double diff = std::abs(nabla_b[i](j) - nabla_b_manual[i](j));
-                errorMsg = contextName + ": Bias gradient mismatch in layer " + std::to_string(i) + " at index " + std::to_string(j);
-                if (diff > TOL) {
-                    std::cerr << errorMsg << ": " << nabla_b[i](j) << " vs manual " << nabla_b_manual[i](j)
-                        << " (diff = " << diff << ")\n";
-                    assertApprox(nabla_b[i](j), nabla_b_manual[i](j), TOL, errorMsg, __FILE__, __LINE__);
-                    layer_passed = false;
-                    all_passed = false;
-                }
-            }
-            // Compare weight gradients
-            for (int r = 0; r < nabla_w[i].rows(); ++r) {
-                for (int c = 0; c < nabla_w[i].cols(); ++c) {
-                    double diff = std::abs(nabla_w[i](r, c) - nabla_w_manual[i](r, c));
-                    errorMsg = contextName + ": Weight gradient mismatch in layer " + std::to_string(i) + " at (" + std::to_string(r) + "," + std::to_string(c) + ")";
-                    if (diff > TOL) {
-                        std::cerr << errorMsg << ": " << nabla_w[i](r, c) << " vs manual " << nabla_w_manual[i](r, c)
-                            << " (diff = " << diff << ")\n";
-                        assertApprox(nabla_w[i](r, c), nabla_w_manual[i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                        layer_passed = false;
-                        all_passed = false;
-                    }
-                }
-            }
-        }
-
-        nabla_b_map[contextName] = nabla_b;
-        nabla_w_map[contextName] = nabla_w;
-
-        // Print gradients for debugging
-        std::cout << std::fixed << std::setprecision(6);
-        for (size_t i = 0; i < nabla_w.size(); ++i) {
-            std::cout << "Layer " << i << " Weight Gradients (" << contextName << "):\n" << nabla_w[i] << "\n";
-            std::cout << "Layer " << i << " Bias Gradients (" << contextName << "): " << nabla_b[i].transpose() << "\n";
-            std::cout << "Layer " << i << " Weight Gradients (Manual):\n" << nabla_w_manual[i] << "\n";
-            std::cout << "Layer " << i << " Bias Gradients (Manual): " << nabla_b_manual[i].transpose() << "\n";
-        }
-        std::cout << "Test: " << contextName << (layer_passed ? " Passed" : " Failed") << "\n\n";
-    }
-
-    // Compare CPU and GPU gradients
-    std::cout << "Test: Compare CPU and GPU gradients\n";
-    bool cpu_gpu_passed = true;
-    for (size_t i = 0; i < sizes.size() - 1; ++i) {
-        // Compare weight gradients
-        for (int r = 0; r < nabla_w_map["CPUContext"][i].rows(); ++r) {
-            for (int c = 0; c < nabla_w_map["CPUContext"][i].cols(); ++c) {
-                double diff = std::abs(nabla_w_map["CPUContext"][i](r, c) - nabla_w_map["GPUContext"][i](r, c));
-                errorMsg = "CPU-GPU weight gradient mismatch in layer " + std::to_string(i) + " at (" + std::to_string(r) + "," + std::to_string(c) + ")";
-                if (diff > TOL) {
-                    std::cerr << errorMsg << ": " << nabla_w_map["CPUContext"][i](r, c) << " vs "
-                        << nabla_w_map["GPUContext"][i](r, c) << " (diff = " << diff << ")\n";
-                    assertApprox(nabla_w_map["CPUContext"][i](r, c), nabla_w_map["GPUContext"][i](r, c), TOL, errorMsg, __FILE__, __LINE__);
-                    cpu_gpu_passed = false;
-                    all_passed = false;
-                }
-            }
-        }
-        // Compare bias gradients
-        for (int j = 0; j < nabla_b_map["CPUContext"][i].size(); ++j) {
-            double diff = std::abs(nabla_b_map["CPUContext"][i](j) - nabla_b_map["GPUContext"][i](j));
-            errorMsg = "CPU-GPU bias gradient mismatch in layer " + std::to_string(i) + " at index " + std::to_string(j);
-            if (diff > TOL) {
-                std::cerr << errorMsg << ": " << nabla_b_map["CPUContext"][i](j) << " vs "
-                    << nabla_b_map["GPUContext"][i](j) << " (diff = " << diff << ")\n";
-                assertApprox(nabla_b_map["CPUContext"][i](j), nabla_b_map["GPUContext"][i](j), TOL, errorMsg, __FILE__, __LINE__);
-                cpu_gpu_passed = false;
-                all_passed = false;
-            }
-        }
-    }
-    std::cout << "Test: Compare CPU and GPU " << (cpu_gpu_passed ? "Passed" : "Failed") << "\n\n";
-
-    if (all_passed) {
-        ++passed_tests_;
-        std::cout << "----- testNetworkBackprop Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testNetworkBackprop Failed -----\n\n";
-    }
-    return all_passed;
-}
-
-/**
- * @brief Tests Network SGD on a generalized XOR-like dataset.
- */
-void NeuralNetworkTest::testNetworkSGD() {
-    std::cout << "Running testNetworkSGD... ";
-    ++total_tests_;
-
-    // Use fixed network size for XOR-like dataset
-    std::vector<int> xor_sizes = { 2, 3, 2 }; // Input: 2, Hidden: 3, Output: 2
-    Network net(xor_sizes);
-
-    // Generate XOR-like dataset
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
-    std::vector<std::pair<Eigen::VectorXd, int>> test_data;
-    generateXORLikeDataset(training_data, test_data);
-
-    // Run SGD and evaluate
-    auto [initial_correct, loss] = net.evaluate(test_data, test_data.size());
-    net.SGD(training_data, 1000, 1, 1.0, &test_data);
-    int final_correct = net.evaluate(test_data, test_data.size()).first;
-
-    assertTrue(final_correct >= initial_correct, "SGD did not improve accuracy", __FILE__, __LINE__);
-   
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
-
-    // Note: Future test cases (e.g., AND, OR, MNIST) can be added by extending
-    // generateXORLikeDataset or creating new dataset generation functions.
-}
-
-// Numerical Gradient Checking:
-// Compute numerical gradients using the finite difference method:
-// ie. dc/dw = C(w+e) - C(w-e) / 2e, 
-// where C is the cost (MSE + L2 term) and e or epsilon is a small perturbation
-// Compare numerical gradients to analytical gradients from backprop.
-void NeuralNetworkTest::testNetworkGradientChecking()
-{
-    std::cout << "Running testNetworkGradientChecking... ";
-    ++total_tests_;
-
-    // Set up small network with L2 regularization
-    double lambda = 0.1; // Non-zero to test L2 term
-    Network net(network_sizes_, lambda);
-    size_t n = 1; // Single example for simplicity
-    const double epsilon = 1e-7; // Perturbation for numerical gradient
-
-    // Input and target
-    Eigen::VectorXd input(network_sizes_[0]);
-    input.setConstant(1.0);
-    Eigen::VectorXd target(network_sizes_.back());
-    target.setZero();
-    target(0) = 1.0;
-
-    // Get analytical gradients
-    auto [nabla_b, nabla_w] = net.backprop(input, target, n);
-
-    // Helper to compute cost (MSE + L2)
-    auto compute_cost = [&](const Eigen::VectorXd& output) {
-        double mse = 0.5 * (output - target).squaredNorm();
-        double l2 = 0.0;
-        if (lambda > 0.0 && n > 0) {
-            for (const auto& layer : net.get_layers()) { // Assuming get_layers() exists
-                l2 += layer->get_weights().squaredNorm();
-            }
-            l2 *= 0.5 * lambda / n;
-        }
-        return mse + l2;
-    };
-
-    // Check gradients for each layer (limit to first few weights/biases for speed)
-    for (size_t l = 0; l < nabla_w.size(); ++l) {
-
-        const auto& layer = net.get_layers()[l];
-        Eigen::MatrixXd weights = layer->get_weights();
-        Eigen::VectorXd biases = layer->get_biases();
-        int max_rows = std::min(2, static_cast<int>(weights.rows())); // Limit for speed
-        int max_cols = std::min(2, static_cast<int>(weights.cols()));
-
-        // Check weight gradients
-        for (int i = 0; i < max_rows; ++i) {
-            for (int j = 0; j < max_cols; ++j) {
-                // Perturb weight positively
-                weights(i, j) += epsilon;
-                net.set_layer_weights(l, weights);
-                auto output_plus = net.feedforward(input);
-                double cost_plus = compute_cost(output_plus);
-                
-                // Perturb weight negatively
-                weights(i, j) -= 2 * epsilon; // Subtract 2*epsilon to go from +epsilon to -epsilon
-                net.set_layer_weights(l, weights);
-                auto output_minus = net.feedforward(input);
-                double cost_minus = compute_cost(output_minus);
-
-                // Restore original weight
-                weights(i, j) += epsilon;
-                net.set_layer_weights(l, weights);
-
-                // Numerical gradient
-                double numerical_grad = (cost_plus - cost_minus) / (2 * epsilon);
-                assertApprox(numerical_grad, nabla_w[l](i, j), TOL,
-                    "Weight gradient incorrect in layer " + std::to_string(l), __FILE__, __LINE__);
-            }
-        }
-
-        // Check bias gradients
-        for (int i = 0; i < max_rows; ++i) {
-            // Perturb bias positively
-            biases(i) += epsilon;
-            net.set_layer_biases(l, biases);
-            auto output_plus = net.feedforward(input);
-            double cost_plus = compute_cost(output_plus);
-
-            // Perturb bias negatively
-            biases(i) -= 2 * epsilon;
-            net.set_layer_biases(l, biases);
-            auto output_minus = net.feedforward(input);
-            double cost_minus = compute_cost(output_minus);
-
-            // Restore original bias
-            biases(i) += epsilon;
-            net.set_layer_biases(l, biases);
-
-            // Numerical gradient
-            double numerical_grad = (cost_plus - cost_minus) / (2 * epsilon);
-            assertApprox(numerical_grad, nabla_b[l](i), TOL,
-                "Bias gradient incorrect in layer " + std::to_string(l), __FILE__, __LINE__);
-        }
-    }
-
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
-}
-
-void NeuralNetworkTest::testComputationContexts() {
-    std::cout << "Running testComputationContexts... ";
-    ++total_tests_;
-
-    // Define XOR dataset
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data = {
-        {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
-        {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)},
-        {Eigen::VectorXd::Unit(2, 1), Eigen::VectorXd::Unit(2, 1)},
-        {Eigen::VectorXd::Ones(2), Eigen::VectorXd::Zero(2)}
-    };
-
-    // Define network architecture
-    std::vector<int> sizes = { 2, 3, 2 };
-
-    // Create CPU and GPU computation contexts
-    CPUComputationContext cpuContext;
-    GPUComputationContext gpuContext;
-
-    // Create networks with CPU and GPU contexts
-    Network netCPU(sizes, 0.001, Network::LossType::MSE, Network::NeuronType::SIGMOID, &cpuContext, 42);
-    Network netGPU(sizes, 0.001, Network::LossType::MSE, Network::NeuronType::SIGMOID, &gpuContext, 42);
-
-    // Train both networks
-    netCPU.SGD(training_data, 100, 1, 0.1, nullptr, false);
-    netGPU.SGD(training_data, 100, 1, 0.1, nullptr, false);
-
-    // Evaluate both networks
-    double TOL = 1e-2; // Relaxed tolerance
-    double cpuLoss = netCPU.evaluate(training_data, training_data.size()).second;
-    double gpuLoss = netGPU.evaluate(training_data, training_data.size()).second;
-
-    // Check if losses are approximately equal
-    assertApprox(cpuLoss, gpuLoss, TOL, "Losses differ between CPU and GPU", __FILE__, __LINE__);
-
-    // Check weights
-    /*for (size_t i = 0; i < netCPU.layers.size(); ++i) {
-        Eigen::MatrixXd cpuWeights = netCPU.layers[i]->get_weights();
-        Eigen::MatrixXd gpuWeights = netGPU.layers[i]->get_weights();
-        for (int j = 0; j < cpuWeights.size(); ++j) {
-            assertApprox(cpuWeights.data()[j], gpuWeights.data()[j], TOL, "Weights differ between CPU and GPU", __FILE__, __LINE__);
-        }
-    }*/
-
-    // Check predictions
-    for (const auto& data : training_data) {
-        Eigen::VectorXd cpuOutput = netCPU.feedforward(data.first);
-        Eigen::VectorXd gpuOutput = netGPU.feedforward(data.first);
-        for (int i = 0; i < cpuOutput.size(); ++i) {
-            assertApprox(cpuOutput(i), gpuOutput(i), TOL, "Outputs differ between CPU and GPU", __FILE__, __LINE__);
-        }
-    }
-
-    ++passed_tests_;
-    std::cout << "Passed" << std::endl;
-}
-
-bool NeuralNetworkTest::testEvaluate() {
-    std::cout << "----- Running testEvaluateCrossEntropy... -----\n";
-    ++total_tests_;
-    bool all_passed = true;
-    std::string contextName;
-    std::string errorMsg;
-
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> test_data = {
-        {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
-        {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)}
-    };
-    std::vector<int> sizes = { 2, 3, 2 };
-    unsigned int seed = 42;
-    size_t n = 2;
-
-    double cpu_loss, gpu_loss;
-    int cpu_correct, gpu_correct;
-
-    for (auto context : computeContexts) {
-        if (dynamic_cast<CPUComputationContext*>(context)) {
-            contextName = "CPUContext";
-        }
-        else if (dynamic_cast<GPUComputationContext*>(context)) {
-            contextName = "GPUContext";
-        }
-        else {
-            throw std::runtime_error("Unknown computation context");
-        }
-
-        std::cout << "Test: " << contextName << "\n";
-        Network net(sizes, 0.0, Network::LossType::CROSS_ENTROPY, Network::NeuronType::SIGMOID, context, seed);
-        auto [correct, loss] = net.evaluate(test_data, n);
-
-        if (contextName == "CPUContext") {
-            cpu_correct = correct;
-            cpu_loss = loss;
-        }
-        else {
-            gpu_correct = correct;
-            gpu_loss = loss;
-        }
-
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Correct: " << correct << "/" << test_data.size() << "\n";
-        std::cout << "Loss: " << loss << "\n";
-        std::cout << "Test: " << contextName << " Passed\n\n";
-    }
-
-    std::cout << "Test: Compare CPU and GPU results\n";
-    bool passed = true;
-    errorMsg = "CPU and GPU correct predictions differ";
-    if (cpu_correct != gpu_correct) {
-        passed = false;
-        std::cerr << errorMsg << ": CPU=" << cpu_correct << ", GPU=" << gpu_correct << "\n";
-    }
-    errorMsg = "CPU and GPU losses differ";
-    if (std::abs(cpu_loss - gpu_loss) > TOL) {
-        passed = false;
-        std::cerr << errorMsg << ": CPU=" << cpu_loss << ", GPU=" << gpu_loss << " (diff=" << std::abs(cpu_loss - gpu_loss) << ")\n";
-    }
-
-    std::cout << "Test: Compare CPU and GPU " << (passed ? "Passed" : "Failed") << "\n\n";
-
-    if (passed) {
-        ++passed_tests_;
-        std::cout << "----- testEvaluateCrossEntropy Passed -----\n\n";
-    }
-    else {
-        std::cout << "----- testEvaluateCrossEntropy Failed -----\n\n";
-    }
-    return passed;
-}
-
-bool NeuralNetworkTest::runAllTests()
-{
-    passed_tests_ = 0;
-    total_tests_ = 0;
-    //testLayerComputeActivationDerivative();
-    //testLayerConstructor();
-    //testLayerForward();
-    //testLayerGradients();
-    //testLayerUpdateParameters();
-    //testNetworkConstructor();
-    //testNetworkFeedforward();
-    testNetworkBackprop();
-    //testNetworkSGD();
-    //testNetworkGradientChecking();
-    //testComputationContexts();
-    //testUpdateMiniBatchSimplified(); 
-    //testBackpropGradientComputation();
-    //testEvaluate();
-    //doStuff();
-    //testLayerComputeActivationDerivativeGPU();
-    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
-    return passed_tests_ == total_tests_;
-}
-
-void NeuralNetworkTest::doStuff()
-{
-    std::cout << "Running doStuff... ";
-    std::string contextName;
-    std::string errorMsg;
-
-    // Define mini-batch (XOR-like dataset subset)
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = {
-        {Eigen::VectorXd::Zero(2), Eigen::VectorXd::Zero(2)},
-        {Eigen::VectorXd::Unit(2, 0), Eigen::VectorXd::Unit(2, 1)}
-    };
-    double eta = 0.1;
-    size_t n = 2;
-    unsigned int seed = 42; // Fixed seed for reproducibility
-
-    // Network configuration
-    std::vector<int> sizes = { 2, 3, 2 };
-    std::map<std::string, std::vector<Eigen::MatrixXd>> weights_map;
-    std::map<std::string, std::vector<Eigen::VectorXd>> biases_map;
-
-    // Test CPU and GPU contexts
-    //for (auto context : computeContexts) {
-    //    if (dynamic_cast<CPUComputationContext*>(context)) {
-    //        contextName = "CPUContext";
-    //    }
-    //    else if (dynamic_cast<GPUComputationContext*>(context)) {
-    //        contextName = "GPUContext";
-    //    }
-    //    else {
-    //        std::cerr << "Unknown computation context in testUpdateMiniBatchSimplified\n";
-    //        throw std::runtime_error("Unknown computation context");
-    //    }
-
-    //    std::cout << "\nTest: " << contextName << "\n";
-    //    Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, context, seed);
-
-    //    // Run update_mini_batch
-    //    double norm = net.update_mini_batch(mini_batch, eta, n);
-
-    //}
-
-    std::cout << "\nTest: GpuCOntext " << "\n";
-    GPUComputationContext gpuContext;
-    CPUComputationContext cpuContext;
-    Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, &gpuContext, seed);
-    double norm = net.update_mini_batch(mini_batch, eta, n);
 }
 
 void NeuralNetworkTest::generateXORLikeDataset(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data, std::vector<std::pair<Eigen::VectorXd, int>>& test_data)
@@ -1836,4 +97,226 @@ void NeuralNetworkTest::generateXORLikeDataset(std::vector<std::pair<Eigen::Vect
         test_data[i].second = target_idx;
     }
 }
+
+
+bool NeuralNetworkTest::testNetworkBackprop() {
+    // Test 1: Backpropagation on CPU matches manual calculations
+    // Beginner note: This test verifies that the CPU version of backpropagation produces gradients that match pre-computed manual values for a small network.
+    std::cout << "Running Test 1: Backprop CPU vs Manual" << std::endl;
+    total_tests_++;
+
+    {
+        // Create network with CPU context, no regularization, MSE loss, sigmoid neurons
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+    
+        // Set specific weights and biases for reproducibility and manual verification
+        // Layer 0 (hidden): 3 neurons, 2 inputs
+        Eigen::MatrixXd w0(3, 2);
+        w0 << 0.1, 0.2,
+            0.3, 0.4,
+            0.5, 0.6;
+        Eigen::VectorXd b0(3);
+        b0 << 0.1, 0.2, 0.3;
+        net_cpu.set_layer_weights(0, w0);
+        net_cpu.set_layer_biases(0, b0);
+
+        // Layer 1 (output): 2 neurons, 3 inputs
+        Eigen::MatrixXd w1(2, 3);
+        w1 << 0.7, 0.8, 0.9,
+            1.0, 1.1, 1.2;
+        Eigen::VectorXd b1(2);
+        b1 << 0.4, 0.5;
+        net_cpu.set_layer_weights(1, w1);
+        net_cpu.set_layer_biases(1, b1);
+
+        // Input and target for a single example
+        Eigen::VectorXd x(2);
+        x << 0.5, 0.5;
+        Eigen::VectorXd y(2);
+        y << 1.0, 0.0;
+
+        // Run backpropagation on CPU
+        auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);  // n=1 since single example, no regularization impact
+
+        // Expected gradients from manual calculation (using Python/numpy for precision)
+        // Beginner note: These values were computed step-by-step using the backpropagation formulas for MSE loss and sigmoid activation.
+        Eigen::VectorXd expected_b0(3);
+        expected_b0 << 0.01232889, 0.01268599, 0.01243287;
+
+        Eigen::MatrixXd expected_w0(3, 2);
+        expected_w0 << 0.00616445, 0.00616445,
+            0.00634300, 0.00634300,
+            0.00621643, 0.00621643;
+
+        Eigen::VectorXd expected_b1(2);
+        expected_b1 << -0.01399889, 0.05988938;
+        Eigen::MatrixXd expected_w1(2, 3);
+        expected_w1 << -0.00786985, -0.00887720, -0.00980717,
+            0.03366840, 0.03797799, 0.04195653;
+
+        // Assert approximations
+        // Beginner note: We check each layer's bias and weight gradients separately for clarity.
+        assertVectorApprox(nabla_b_cpu[0], expected_b0, TOL, "Hidden layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[0], expected_w0, TOL, "Hidden layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[1], expected_b1, TOL, "Output layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[1], expected_w1, TOL, "Output layer weight gradients mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 1: Backprop CPU vs Manual Passed." << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 2: Backpropagation on GPU matches manual calculations
+    // Beginner note: Similar to Test 1, but for GPU. We copy gradients back from device memory to compare.
+    std::cout << "Running Test 2: Backprop GPU vs Manual" << std::endl;
+    total_tests_++;
+    {
+        // Create network with GPU context
+        Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+    
+        // Set the same specific weights and biases as in CPU test
+        Eigen::MatrixXd w0(3, 2);
+        w0 << 0.1, 0.2,
+            0.3, 0.4,
+            0.5, 0.6;
+        Eigen::VectorXd b0(3);
+        b0 << 0.1, 0.2, 0.3;
+        net_gpu.set_layer_weights(0, w0);
+        net_gpu.set_layer_biases(0, b0);
+
+        Eigen::MatrixXd w1(2, 3);
+        w1 << 0.7, 0.8, 0.9,
+            1.0, 1.1, 1.2;
+        Eigen::VectorXd b1(2);
+        b1 << 0.4, 0.5;
+        net_gpu.set_layer_weights(1, w1);
+        net_gpu.set_layer_biases(1, b1);
+
+        // Input and target
+        Eigen::VectorXd x(2);
+        x << 0.5, 0.5;
+        Eigen::VectorXd y(2);
+        y << 1.0, 0.0;
+
+        // Run backpropagation on GPU (accumulates gradients on device)
+        net_gpu.backprop_gpu(x, y, 1);
+
+        // Retrieve gradients from GPU layers by copying back to host
+        // Beginner note: GPU computations store results in device memory; we copy them to Eigen structures for comparison.
+        const auto& layers = net_gpu.get_layers();
+
+        // Hidden layer
+        Eigen::MatrixXd nabla_w0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(nabla_w0_gpu, layers[0]->get_d_weight_grads_(), 3, 2);
+        Eigen::VectorXd nabla_b0_gpu(3);
+        gpuContext->copy_biases_to_host(nabla_b0_gpu, layers[0]->get_d_delta_(), 3);
+       
+    
+        // Output layer
+        Eigen::MatrixXd nabla_w1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(nabla_w1_gpu, layers[1]->get_d_weight_grads_(), 2, 3);
+        Eigen::VectorXd nabla_b1_gpu(2);
+        gpuContext->copy_biases_to_host(nabla_b1_gpu, layers[1]->get_d_delta_(), 2);
+    
+        // Expected values (same as CPU)
+        Eigen::VectorXd expected_b0(3);
+        expected_b0 << 0.01232889, 0.01268599, 0.01243287;
+        Eigen::MatrixXd expected_w0(3, 2);
+        expected_w0 << 0.00616445, 0.00616445,
+            0.00634300, 0.00634300,
+            0.00621643, 0.00621643;
+        Eigen::VectorXd expected_b1(2);
+        expected_b1 << -0.01399889, 0.05988938;
+        Eigen::MatrixXd expected_w1(2, 3);
+        expected_w1 << -0.00786985, -0.00887720, -0.00980717,
+            0.03366840, 0.03797799, 0.04195653;
+
+        // Assert
+        assertVectorApprox(nabla_b0_gpu, expected_b0, TOL, "GPU Hidden layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w0_gpu, expected_w0, TOL, "GPU Hidden layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b1_gpu, expected_b1, TOL, "GPU Output layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w1_gpu, expected_w1, TOL, "GPU Output layer weight gradients mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 2: Backprop GPU vs Manual Passed" << std::endl;
+        passed_tests_++;
+    }
+
+
+    // Test 3: Backpropagation consistency between CPU and GPU
+    // Beginner note: This test ensures CPU and GPU produce the same gradients by direct comparison, using the XOR-like dataset.
+    std::cout << "Running Test 3: Backprop CPU vs GPU Consistency" << std::endl;
+    total_tests_++;
+    {
+        // Create CPU and GPU networks with same seed
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+        Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+
+        // Ensure identical initial parameters by copying from CPU to GPU
+        // Beginner note: Even with the same seed, we copy to guarantee exact match due to potential RNG differences.
+        const auto& cpu_layers = net_cpu.get_layers();
+        auto& gpu_layers = net_gpu.get_mutable_layers();
+        for (size_t i = 0; i < cpu_layers.size(); ++i) {
+            gpu_layers[i]->set_weights(cpu_layers[i]->get_weights());
+            gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
+        }
+
+        // Use a sample from XOR-like dataset
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
+        std::vector<std::pair<Eigen::VectorXd, int>> test_data;
+        generateXORLikeDataset(training_data, test_data);
+
+        // Pick the first example: input [0,0], target [1,0] (even sum)
+        Eigen::VectorXd x = training_data[0].first;
+        Eigen::VectorXd y = training_data[0].second;
+
+        // Run backprop on CPU
+        auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, training_data.size());
+
+        // Run backprop on GPU
+        net_gpu.backprop_gpu(x, y, training_data.size());
+
+        // Retrieve GPU gradients
+        const auto& gpu_const_layers = net_gpu.get_layers();  // Use const reference
+        Eigen::MatrixXd nabla_w0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(nabla_w0_gpu, gpu_const_layers[0]->get_d_weight_grads_(), 3, 2);
+        //gpuContext->copy_from_device(gpu_const_layers[0]->get_d_weight_grads_(), nabla_w0_gpu);
+        Eigen::VectorXd nabla_b0_gpu(3);
+        gpuContext->copy_biases_to_host(nabla_b0_gpu, gpu_const_layers[0]->get_d_delta_(), 3);
+        //gpuContext->copy_from_device(gpu_const_layers[0]->get_d_delta_(), nabla_b0_gpu);
+        Eigen::MatrixXd nabla_w1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(nabla_w1_gpu, gpu_const_layers[1]->get_d_weight_grads_(), 2, 3);
+        //gpuContext->copy_from_device(gpu_const_layers[1]->get_d_weight_grads_(), nabla_w1_gpu);
+        Eigen::VectorXd nabla_b1_gpu(2);
+        gpuContext->copy_biases_to_host(nabla_b1_gpu, gpu_const_layers[1]->get_d_delta_(), 2);
+        //gpuContext->copy_from_device(gpu_const_layers[1]->get_d_delta_(), nabla_b1_gpu);
+    
+        // Compare CPU vs GPU
+        // Beginner note: We compare each corresponding gradient to ensure the GPU port matches the CPU implementation.
+        assertVectorApprox(nabla_b_cpu[0], nabla_b0_gpu, TOL, "Hidden bias CPU vs GPU mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[0], nabla_w0_gpu, TOL, "Hidden weight CPU vs GPU mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[1], nabla_b1_gpu, TOL, "Output bias CPU vs GPU mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[1], nabla_w1_gpu, TOL, "Output weight CPU vs GPU mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 3: Backprop CPU vs GPU Consistency - Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    return true;
+}
+
+
+bool NeuralNetworkTest::runAllTests()
+{
+    passed_tests_ = 0;
+    total_tests_ = 0;
+    
+    //tests
+    testNetworkBackprop();
+
+    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
+    return passed_tests_ == total_tests_;
+}
+
+
+
+
 

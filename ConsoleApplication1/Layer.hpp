@@ -9,6 +9,10 @@
 #include "Activation.hpp"  
 #include "ComputationContext.hpp"
 
+// Forward declarations
+class GPUComputationContext;
+class CPUComputationContext;
+
 /**
  * @brief A neural network layer with sigmoid activation.
  *
@@ -65,9 +69,9 @@ public:
 	void compute_gradients_gpu(double* d_deltas, bool apply_derivative = true);
 
 	// Wrapper to dispatch
-	void compute_gradients(const Eigen::VectorXd& deltas,
+	/*void compute_gradients(const Eigen::VectorXd& deltas,
 		Eigen::MatrixXd& weight_grads,
-		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;
+		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;*/
 
 	/**
 	 * @brief Updates weights and biases using pre-computed gradients (CPU).

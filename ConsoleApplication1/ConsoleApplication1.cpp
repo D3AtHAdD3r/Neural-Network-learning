@@ -5,16 +5,9 @@
 //#include"CPUComputationContext.hpp"
 //#include"GPUComputationContext.hpp"
 #include <iostream>
-#include <chrono> // Add this header
+#include <chrono> 
 
 
-/*Changes made :
-1. Added detailed metrics.
-2. Implemented L2 Regularization and L2 Scaling.
-3. Added a brief unit test for gradient checking
-4. Added cross-entropy.
-5. Added a brief activation interface with sigmoid only support currently.
-*/
 
 /*
 Notes- 
@@ -25,7 +18,7 @@ Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps pre
 */
 
 
-int main_4444() {
+int main_3333() {
     // Example: [784, 30, 10] network
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -34,7 +27,7 @@ int main_4444() {
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
     // Load smaller dataset for testing
-    auto training_data = load_mnist_training(train_images, train_labels, 15000);
+    auto training_data = load_mnist_training(train_images, train_labels, 5000);
     auto test_data = load_mnist_test(test_images, test_labels, 3000);
 
     // Create CPU and GPU computation contexts

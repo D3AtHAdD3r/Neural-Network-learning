@@ -2,42 +2,60 @@
 #include<iostream>
 #include"utils.h"
 
-Eigen::VectorXd CPUComputationContext::computeLinear(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
+void CPUComputationContext::fuckingHell() {
+	return;
+}
+
+Eigen::VectorXd CPUComputationContext::computeLinearCPU(const Eigen::MatrixXd& weights, const Eigen::VectorXd& input, const Eigen::VectorXd& biases)
 {
 	// Perform matrix-vector multiplication followed by vector addition
 	return weights * input + biases;
 }
 
-Eigen::MatrixXd CPUComputationContext::computeWeightGradient(const Eigen::VectorXd& delta, const Eigen::VectorXd& activation)
+Eigen::MatrixXd CPUComputationContext::computeWeightGradientCPU(const Eigen::VectorXd& delta, const Eigen::VectorXd& activation)
 {
 	// Compute outer product: delta (mx1) * activation.transpose() (1xn) = mxn matrix
 	return delta * activation.transpose();
 }
 
 
-Eigen::VectorXd CPUComputationContext::applyActivation(const Eigen::VectorXd& z, const Activation* activation)
+Eigen::VectorXd CPUComputationContext::applyActivationCPU(const Eigen::VectorXd& z, const Activation* activation)
 {
 	// Delegate to the activation object's activate method
 	return activation->activate(z);
 }
 
-Eigen::VectorXd CPUComputationContext::computeActivationDerivative(const Eigen::VectorXd& activations, const Eigen::VectorXd& pre_activations, const Activation* activation)
+Eigen::VectorXd CPUComputationContext::computeActivationDerivativeCPU(const Eigen::VectorXd& activations, const Eigen::VectorXd& pre_activations, const Activation* activation)
 {
 	// Delegate to the activation object's derivative method
 	return activation->derivative(&activations, &pre_activations);
 }
 
-void CPUComputationContext::computeGradients(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads)
+//void CPUComputationContext::computeGradientsCPU(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads)
+//{
+//	// Element-wise multiplication of deltas and activation derivatives
+//	Eigen::VectorXd adjusted_deltas = deltas.cwiseProduct(activation_derives);
+//	// Outer product to compute weight gradients
+//	weight_grads = adjusted_deltas * input.transpose();
+//	// Bias gradients are the adjusted deltas
+//	bias_grads = adjusted_deltas;
+//}
+
+void CPUComputationContext::computeGradientsCPU(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, bool apply_derivative)
 {
-	// Element-wise multiplication of deltas and activation derivatives
-	Eigen::VectorXd adjusted_deltas = deltas.cwiseProduct(activation_derives);
+	Eigen::VectorXd adjusted_deltas = deltas;
+	if (apply_derivative) {
+		// Element-wise multiplication of deltas and activation derivatives
+		adjusted_deltas = deltas.cwiseProduct(activation_derives);
+	}
 	// Outer product to compute weight gradients
 	weight_grads = adjusted_deltas * input.transpose();
 	// Bias gradients are the adjusted deltas
 	bias_grads = adjusted_deltas;
 }
 
-void CPUComputationContext::updateParameters(Eigen::MatrixXd& weights, Eigen::VectorXd& biases, const Eigen::MatrixXd& weight_grads, const Eigen::VectorXd& bias_grads, double scale)
+
+void CPUComputationContext::updateParametersCPU(Eigen::MatrixXd& weights, Eigen::VectorXd& biases, const Eigen::MatrixXd& weight_grads, const Eigen::VectorXd& bias_grads, double scale)
 {
 	// Subtract gradients from weights and biases
 	/*weights -= weight_grads;
@@ -47,7 +65,7 @@ void CPUComputationContext::updateParameters(Eigen::MatrixXd& weights, Eigen::Ve
 	biases -= bias_grads * scale;
 }
 
-void CPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixXd>& weight_grads_in, const std::vector<Eigen::VectorXd>& bias_grads_in, std::vector<Eigen::MatrixXd>& weight_grads_out, std::vector<Eigen::VectorXd>& bias_grads_out, double scale)
+void CPUComputationContext::accumulateGradientsCPU(const std::vector<Eigen::MatrixXd>& weight_grads_in, const std::vector<Eigen::VectorXd>& bias_grads_in, std::vector<Eigen::MatrixXd>& weight_grads_out, std::vector<Eigen::VectorXd>& bias_grads_out, double scale)
 {
 	if (weight_grads_in.size() != weight_grads_out.size() || bias_grads_in.size() != bias_grads_out.size()) {
 		throw std::runtime_error("Gradient vector size mismatch in accumulateGradients");
@@ -64,24 +82,24 @@ void CPUComputationContext::accumulateGradients(const std::vector<Eigen::MatrixX
 	}
 }
 
-double CPUComputationContext::compute_squared_norm(const Eigen::MatrixXd& matrix)
+double CPUComputationContext::compute_squared_normCPU(const Eigen::MatrixXd& matrix)
 {
 	return matrix.squaredNorm();
 }
 
-double CPUComputationContext::compute_squared_norm(const Eigen::VectorXd& vector)
+double CPUComputationContext::compute_squared_normCPU(const Eigen::VectorXd& vector)
 {
 	return vector.squaredNorm();
 }
 
 
-double CPUComputationContext::compute_mse_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
+double CPUComputationContext::compute_mse_lossCPU(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
 {
 	Eigen::VectorXd diff = output - target;
 	return diff.squaredNorm();
 }
 
-double CPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
+double CPUComputationContext::compute_cross_entropy_lossCPU(const Eigen::VectorXd& output, const Eigen::VectorXd& target)
 {
 	double loss = 0.0;
 	for (int i = 0; i < output.size(); ++i) {
@@ -91,114 +109,5 @@ double CPUComputationContext::compute_cross_entropy_loss(const Eigen::VectorXd& 
 	return loss;
 }
 
-void CPUComputationContext::allocate_weights(double** d_weights, int rows, int cols) {
-	*d_weights = nullptr;
-}
 
-void CPUComputationContext::allocate_biases(double** d_biases, int size) {
-	*d_biases = nullptr;
-}
-
-void CPUComputationContext::copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) {
-	// No-op for CPU
-}
-
-void CPUComputationContext::copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) {
-	// No-op for CPU
-}
-
-void CPUComputationContext::copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) {
-	// No-op for CPU
-}
-
-void CPUComputationContext::copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) {
-	// No-op for CPU
-}
-
-
-void CPUComputationContext::free_weights(double* d_weights) {
-	// No-op for CPU
-}
-
-void CPUComputationContext::free_biases(double* d_biases) {
-	// No
-}
-
-void CPUComputationContext::allocate_vector(double** d_vector, int size) {
-	*d_vector = nullptr;
-}
-
-void CPUComputationContext::free_vector(double* d_vector) {
-	// No-op
-}
-
-void CPUComputationContext::copy_to_device(double* d_vector, const Eigen::VectorXd& vector) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::copy_to_device(double* d_matrix, const Eigen::MatrixXd& matrix) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-Eigen::VectorXd CPUComputationContext::computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::computeGradientsGPU(const Eigen::VectorXd& deltas, double* d_derivatives, double* d_input, double* weight_grads, double* bias_grads, int m, int n) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::updateParametersGPU(double* d_weights,
-	double* d_biases,
-	double* weight_grads,
-	double* bias_grads,
-	int m, int n, int bias_size, double scale) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::accumulateGradientsGPU(
-	const std::vector<double*>& weight_grads_in,
-	const std::vector<double*>& bias_grads_in,
-	const std::vector<double*>& weight_grads_out,
-	const std::vector<double*>& bias_grads_out,
-	const std::vector<int>& weight_rows,
-	const std::vector<int>& weight_cols,
-	const std::vector<int>& bias_sizes,
-	double scale) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-void CPUComputationContext::debugPrint(const double* data, int n) {
-	throw std::runtime_error("GPU operations not supported in CPU context");
-}
-
-
-void CPUComputationContext::computeGradientsCPU(const Eigen::VectorXd& deltas, const Eigen::VectorXd& activation_derives, const Eigen::VectorXd& input, Eigen::MatrixXd& weight_grads, Eigen::VectorXd& bias_grads, bool apply_derivative)
-{
-	Eigen::VectorXd adjusted_deltas = deltas;
-	if (apply_derivative) {
-		// Element-wise multiplication of deltas and activation derivatives
-		adjusted_deltas = deltas.cwiseProduct(activation_derives);
-	}
-	// Outer product to compute weight gradients
-	weight_grads = adjusted_deltas * input.transpose();
-	// Bias gradients are the adjusted deltas
-	bias_grads = adjusted_deltas;
-}
 

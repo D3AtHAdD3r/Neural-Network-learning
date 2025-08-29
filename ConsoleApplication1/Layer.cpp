@@ -1,6 +1,6 @@
 #include "Layer.hpp"
 #include"utils.h"
-#include"GPUComputationContext.hpp";
+#include"GPUComputationContext.hpp"
 #include"CPUComputationContext.hpp"
 #include <sstream>
 #include <iomanip>
@@ -105,20 +105,12 @@ Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
     }
     else {
         // CPU path
-        pre_activations_ = contextCPU_->computeLinear(weights_, input, biases_);
-        activations_ = contextCPU_->applyActivation(pre_activations_, activation_);
+        pre_activations_ = contextCPU_->computeLinearCPU(weights_, input, biases_);
+        activations_ = contextCPU_->applyActivationCPU(pre_activations_, activation_);
     }
     has_valid_activations_ = true;
     return activations_;
 }
-
-//void Layer::compute_gradients_cpu(const Eigen::VectorXd& deltas,
-//    Eigen::MatrixXd& weight_grads,
-//    Eigen::VectorXd& bias_grads) const
-//{
-//    Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivative(activations_, pre_activations_, activation_);
-//    contextCPU_->computeGradients(deltas, activation_derives, input_, weight_grads, bias_grads);
-//}
 
 void Layer::compute_gradients_cpu(const Eigen::VectorXd& deltas,
     Eigen::MatrixXd& weight_grads,
@@ -137,7 +129,7 @@ void Layer::compute_gradients_cpu(const Eigen::VectorXd& deltas,
         //or
         {
             if (apply_derivative) {
-                Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivative(activations_, pre_activations_, activation_);
+                Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivativeCPU(activations_, pre_activations_, activation_);
                 contextCPU_->computeGradientsCPU(deltas, activation_derives, input_, weight_grads, bias_grads, apply_derivative);
             }
             else {
@@ -171,69 +163,13 @@ void Layer::compute_gradients_gpu(double* d_incoming_deltas, bool apply_derivati
     //context_->copy_to_host(bias_grads, d_bias_grads_, num_neurons_);
 }
 
-//void Layer::compute_gradients_gpu(double* d_incoming_deltas, bool apply_derivative) {
-//    double* d_adjusted_deltas = nullptr;
-//    if (apply_derivative) {
-//        // Compute sigmoid derivative on device
-//        contextGPU_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
-//
-//        // adjusted_deltas = incoming_deltas * derivatives
-//        contextGPU_->launch_elementwise_multiply(d_incoming_deltas, d_derivatives, d_temp_, num_neurons_);
-//        d_adjusted_deltas = d_temp_;
-//    }
-//    else {
-//        d_adjusted_deltas = d_incoming_deltas;  // No derivative for output layer with CE
-//    }
-//
-//    // Reset gradients
-//    contextGPU_->set_to_zero(d_weight_grads_, num_neurons_ * num_inputs_);
-//
-//    // Compute weight_grads = outer(adjusted_deltas, input)
-//    double alpha = 1.0;
-//    cublasStatus_t stat = cublasDger(contextGPU_->cublasHandle, num_neurons_, num_inputs_, &alpha,
-//        d_adjusted_deltas, 1, d_input_, 1, d_weight_grads_, num_neurons_);
-//
-//    // delta (bias_grad) = adjusted_deltas
-//    cudaMemcpy(d_delta_, d_adjusted_deltas, num_neurons_ * sizeof(double), cudaMemcpyDeviceToDevice);
-//
-//}
-
-//void Layer::compute_gradients_gpu(const Eigen::VectorXd& deltas) {
-//    // Compute derivative on device
-//    contextGPU_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
-//
-//    // If deltas is non-empty, copy to device; else assume it's already in bias_grads or similar
-//    if (!deltas.isZero()) {
-//        contextGPU_->copy_to_device(d_bias_grads_, deltas);  // Reuse bias_grads as temp delta
-//    }
-//
-//    contextGPU_->computeGradientsGPU(deltas, d_derivatives, d_input_,
-//        d_weight_grads_, d_bias_grads_,
-//        num_neurons_, num_inputs_);
-//}
-
-//void Layer::compute_gradients(const Eigen::VectorXd& deltas,
-//    Eigen::MatrixXd& weight_grads,
-//    Eigen::VectorXd& bias_grads) const {
-//
-//    if (is_gpu_context_) {
-//        const_cast<Layer*>(this)->compute_gradients_gpu(deltas);  // Const cast for mutating device state
-//        
-//        // Copy to host if needed
-//        context_->copy_to_host(weight_grads, d_weight_grads_, num_neurons_, num_inputs_);
-//        context_->copy_to_host(bias_grads, d_bias_grads_, num_neurons_);
-//    }
-//    else {
-//        compute_gradients_cpu(deltas, weight_grads, bias_grads);
-//    }
-//}
 
 //CPU variant
 void Layer::update_parameters(
     const Eigen::MatrixXd& weight_grads,
     const Eigen::VectorXd& bias_grads,
     double scale) {
-    context_->updateParameters(weights_, biases_, weight_grads, bias_grads, scale);
+    contextCPU_->updateParametersCPU(weights_, biases_, weight_grads, bias_grads, scale);
 }
 
 //GPU variant
@@ -242,15 +178,15 @@ void Layer::update_parameters(
     double* accumulate_bias_grads,
     double scale) {
 
-    context_->updateParametersGPU(
+    contextGPU_->updateParametersGPU(
         d_weights_, d_biases_,
         accumulate_weight_grads, accumulate_bias_grads,
         num_neurons_, num_inputs_, num_neurons_, scale
     );
 
     // Update host weights and biases for compatibility
-    context_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
-    context_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
+    contextGPU_->copy_weights_to_host(weights_, d_weights_, num_neurons_, num_inputs_);
+    contextGPU_->copy_biases_to_host(biases_, d_biases_, num_neurons_);
 }
 
 // New: Apply derivative elementwise on GPU (for backprop delta propagation)
@@ -313,7 +249,7 @@ void Layer::set_weights(const Eigen::MatrixXd& weights)
     assert(weights.rows() == weights_.rows() && weights.cols() == weights_.cols());
     weights_ = weights;
     if (d_weights_) {
-        context_->copy_weights_to_device(d_weights_, weights_);
+        contextGPU_->copy_weights_to_device(d_weights_, weights_);
     }
 }
 
@@ -321,7 +257,7 @@ void Layer::set_biases(const Eigen::VectorXd& biases) {
     assert(biases.size() == biases_.size());
     biases_ = biases;
     if (d_biases_) {
-        context_->copy_biases_to_device(d_biases_, biases_);
+        contextGPU_->copy_biases_to_device(d_biases_, biases_);
     }
 }
 
@@ -329,7 +265,7 @@ void Layer::set_pre_activations(const Eigen::VectorXd& pre_activations) {
     assert(pre_activations.size() == pre_activations_.size());
     pre_activations_ = pre_activations;
     if (d_pre_activations_) {
-        context_->copy_to_device(d_pre_activations_, pre_activations);
+        contextGPU_->copy_to_device(d_pre_activations_, pre_activations);
     }
 }
 
@@ -337,6 +273,6 @@ void Layer::set_activations(const Eigen::VectorXd& activations) {
     assert(activations.size() == activations_.size());
     activations_ = activations;
     if (d_activations_) {
-        context_->copy_to_device(d_activations_, activations);
+        contextGPU_->copy_to_device(d_activations_, activations);
     }
 }
