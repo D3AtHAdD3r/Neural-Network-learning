@@ -162,7 +162,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ConsoleApplication1.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="CPUComputationContext.cpp" />
     <CudaCompile Include="GPUComputationContext.cpp" />
     <ClCompile Include="Layer.cpp" />

@@ -28,6 +28,7 @@ public:
     ~NeuralNetworkTest();
 public:
     bool testNetworkBackprop();
+    bool testUpdateMiniBatch();
 
 public:
     bool runAllTests();
@@ -41,6 +42,25 @@ public:
     void generateXORLikeDataset(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
 private:
+
+    /**
+     * @brief Provides precomputed test data for backpropagation verification.
+     * @param loss_type The loss function type (MSE or CROSS_ENTROPY)
+     * @param weights Output: Predefined weights for each layer
+     * @param biases Output: Predefined biases for each layer
+     * @param x Output: Input vector
+     * @param y Output: Target vector
+     * @param expected_nabla_b Output: Expected bias gradients
+     * @param expected_nabla_w Output: Expected weight gradients
+     * @note neuron support: sigmoid only, no regularization
+     */
+    void getPrecomputedBackpropTestData(Network::LossType loss_type,
+        std::vector<Eigen::MatrixXd>& weights,
+        std::vector<Eigen::VectorXd>& biases,
+        Eigen::VectorXd& x,
+        Eigen::VectorXd& y,
+        std::vector<Eigen::VectorXd>& expected_nabla_b,
+        std::vector<Eigen::MatrixXd>& expected_nabla_w) const;
     
     /**
      * @brief Asserts a condition is true, reporting failure if not.

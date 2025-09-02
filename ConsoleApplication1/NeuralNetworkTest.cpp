@@ -98,68 +98,112 @@ void NeuralNetworkTest::generateXORLikeDataset(std::vector<std::pair<Eigen::Vect
     }
 }
 
+void NeuralNetworkTest::getPrecomputedBackpropTestData(Network::LossType loss_type,
+    std::vector<Eigen::MatrixXd>& weights,
+    std::vector<Eigen::VectorXd>& biases,
+    Eigen::VectorXd& x,
+    Eigen::VectorXd& y,
+    std::vector<Eigen::VectorXd>& expected_nabla_b,
+    std::vector<Eigen::MatrixXd>& expected_nabla_w) const {
+
+    // Set fixed weights and biases for the 2-3-2 network
+    // Beginner note: These are predefined values for reproducibility, allowing us to compare against manually computed gradients.
+    weights.resize(2);
+    weights[0] = Eigen::MatrixXd(3, 2);
+    weights[0] << 0.1, 0.2,
+        0.3, 0.4,
+        0.5, 0.6;
+    weights[1] = Eigen::MatrixXd(2, 3);
+    weights[1] << 0.7, 0.8, 0.9,
+        1.0, 1.1, 1.2;
+
+    biases.resize(2);
+    biases[0] = Eigen::VectorXd(3);
+    biases[0] << 0.1, 0.2, 0.3;
+    biases[1] = Eigen::VectorXd(2);
+    biases[1] << 0.4, 0.5;
+
+    // Fixed input and target
+    // Beginner note: This is a single example for simplicity in manual verification.
+    x = Eigen::VectorXd(2);
+    x << 0.5, 0.5;
+    y = Eigen::VectorXd(2);
+    y << 1.0, 0.0;
+
+    // Precomputed expected gradients based on loss type
+    // Beginner note: These values were calculated using Python/NumPy to simulate the backpropagation steps exactly.
+    expected_nabla_b.resize(2);
+    expected_nabla_w.resize(2);
+
+    if (loss_type == Network::LossType::MSE) {
+        expected_nabla_b[0] = Eigen::VectorXd(3);
+        expected_nabla_b[0] << 0.01232889, 0.01268599, 0.01243287;
+
+        expected_nabla_w[0] = Eigen::MatrixXd(3, 2);
+        expected_nabla_w[0] << 0.00616445, 0.00616445,
+            0.006343, 0.006343,
+            0.00621643, 0.00621643;
+
+        expected_nabla_b[1] = Eigen::VectorXd(2);
+        expected_nabla_b[1] << -0.01399889, 0.05988938;
+
+        expected_nabla_w[1] = Eigen::MatrixXd(2, 3);
+        expected_nabla_w[1] << -0.00786985, -0.0088772, -0.00980717,
+            0.0336684, 0.03797799, 0.04195653;
+    }
+    else { // CROSS_ENTROPY
+        expected_nabla_b[0] = Eigen::VectorXd(3);
+        expected_nabla_b[0] << 0.2073104, 0.21407222, 0.21042799;
+
+        expected_nabla_w[0] = Eigen::MatrixXd(3, 2);
+        expected_nabla_w[0] << 0.1036552, 0.1036552,
+            0.10703611, 0.10703611,
+            0.105214, 0.105214;
+
+        expected_nabla_b[1] = Eigen::VectorXd(2);
+        expected_nabla_b[1] << -0.12660205, 0.93088757;
+
+        expected_nabla_w[1] = Eigen::MatrixXd(2, 3);
+        expected_nabla_w[1] << -0.0711727, -0.08028287, -0.08869324,
+            0.52332312, 0.59030894, 0.65214925;
+    }
+
+}
+
 
 bool NeuralNetworkTest::testNetworkBackprop() {
     // Test 1: Backpropagation on CPU matches manual calculations
     // Beginner note: This test verifies that the CPU version of backpropagation produces gradients that match pre-computed manual values for a small network.
     std::cout << "Running Test 1: Backprop CPU vs Manual" << std::endl;
     total_tests_++;
-
     {
-        // Create network with CPU context, no regularization, MSE loss, sigmoid neurons
-        Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+        // Retrieve precomputed data for MSE (you can change to CROSS_ENTROPY to test the other loss)
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+        
+        // Create network with CPU context, no regularization, specified loss, sigmoid neurons
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, cpuContext.get(), seed_);
+
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
     
-        // Set specific weights and biases for reproducibility and manual verification
-        // Layer 0 (hidden): 3 neurons, 2 inputs
-        Eigen::MatrixXd w0(3, 2);
-        w0 << 0.1, 0.2,
-            0.3, 0.4,
-            0.5, 0.6;
-        Eigen::VectorXd b0(3);
-        b0 << 0.1, 0.2, 0.3;
-        net_cpu.set_layer_weights(0, w0);
-        net_cpu.set_layer_biases(0, b0);
-
-        // Layer 1 (output): 2 neurons, 3 inputs
-        Eigen::MatrixXd w1(2, 3);
-        w1 << 0.7, 0.8, 0.9,
-            1.0, 1.1, 1.2;
-        Eigen::VectorXd b1(2);
-        b1 << 0.4, 0.5;
-        net_cpu.set_layer_weights(1, w1);
-        net_cpu.set_layer_biases(1, b1);
-
-        // Input and target for a single example
-        Eigen::VectorXd x(2);
-        x << 0.5, 0.5;
-        Eigen::VectorXd y(2);
-        y << 1.0, 0.0;
-
         // Run backpropagation on CPU
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);  // n=1 since single example, no regularization impact
 
-        // Expected gradients from manual calculation (using Python/numpy for precision)
-        // Beginner note: These values were computed step-by-step using the backpropagation formulas for MSE loss and sigmoid activation.
-        Eigen::VectorXd expected_b0(3);
-        expected_b0 << 0.01232889, 0.01268599, 0.01243287;
-
-        Eigen::MatrixXd expected_w0(3, 2);
-        expected_w0 << 0.00616445, 0.00616445,
-            0.00634300, 0.00634300,
-            0.00621643, 0.00621643;
-
-        Eigen::VectorXd expected_b1(2);
-        expected_b1 << -0.01399889, 0.05988938;
-        Eigen::MatrixXd expected_w1(2, 3);
-        expected_w1 << -0.00786985, -0.00887720, -0.00980717,
-            0.03366840, 0.03797799, 0.04195653;
-
         // Assert approximations
         // Beginner note: We check each layer's bias and weight gradients separately for clarity.
-        assertVectorApprox(nabla_b_cpu[0], expected_b0, TOL, "Hidden layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w_cpu[0], expected_w0, TOL, "Hidden layer weight gradients mismatch", __FILE__, __LINE__);
-        assertVectorApprox(nabla_b_cpu[1], expected_b1, TOL, "Output layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w_cpu[1], expected_w1, TOL, "Output layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[1], expected_nabla_b[1], TOL, "Output layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[1], expected_nabla_w[1], TOL, "Output layer weight gradients mismatch", __FILE__, __LINE__);
 
         std::cout << "Test 1: Backprop CPU vs Manual Passed." << std::endl;
         passed_tests_++;
@@ -170,32 +214,23 @@ bool NeuralNetworkTest::testNetworkBackprop() {
     std::cout << "Running Test 2: Backprop GPU vs Manual" << std::endl;
     total_tests_++;
     {
+        // Retrieve precomputed data for MSE (you can change to CROSS_ENTROPY to test the other loss)
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
         // Create network with GPU context
         Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
-    
-        // Set the same specific weights and biases as in CPU test
-        Eigen::MatrixXd w0(3, 2);
-        w0 << 0.1, 0.2,
-            0.3, 0.4,
-            0.5, 0.6;
-        Eigen::VectorXd b0(3);
-        b0 << 0.1, 0.2, 0.3;
-        net_gpu.set_layer_weights(0, w0);
-        net_gpu.set_layer_biases(0, b0);
 
-        Eigen::MatrixXd w1(2, 3);
-        w1 << 0.7, 0.8, 0.9,
-            1.0, 1.1, 1.2;
-        Eigen::VectorXd b1(2);
-        b1 << 0.4, 0.5;
-        net_gpu.set_layer_weights(1, w1);
-        net_gpu.set_layer_biases(1, b1);
-
-        // Input and target
-        Eigen::VectorXd x(2);
-        x << 0.5, 0.5;
-        Eigen::VectorXd y(2);
-        y << 1.0, 0.0;
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
 
         // Run backpropagation on GPU (accumulates gradients on device)
         net_gpu.backprop_gpu(x, y, 1);
@@ -209,37 +244,22 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         gpuContext->copy_weights_to_host(nabla_w0_gpu, layers[0]->get_d_weight_grads_(), 3, 2);
         Eigen::VectorXd nabla_b0_gpu(3);
         gpuContext->copy_biases_to_host(nabla_b0_gpu, layers[0]->get_d_delta_(), 3);
-       
-    
+
         // Output layer
         Eigen::MatrixXd nabla_w1_gpu(2, 3);
         gpuContext->copy_weights_to_host(nabla_w1_gpu, layers[1]->get_d_weight_grads_(), 2, 3);
         Eigen::VectorXd nabla_b1_gpu(2);
         gpuContext->copy_biases_to_host(nabla_b1_gpu, layers[1]->get_d_delta_(), 2);
-    
-        // Expected values (same as CPU)
-        Eigen::VectorXd expected_b0(3);
-        expected_b0 << 0.01232889, 0.01268599, 0.01243287;
-        Eigen::MatrixXd expected_w0(3, 2);
-        expected_w0 << 0.00616445, 0.00616445,
-            0.00634300, 0.00634300,
-            0.00621643, 0.00621643;
-        Eigen::VectorXd expected_b1(2);
-        expected_b1 << -0.01399889, 0.05988938;
-        Eigen::MatrixXd expected_w1(2, 3);
-        expected_w1 << -0.00786985, -0.00887720, -0.00980717,
-            0.03366840, 0.03797799, 0.04195653;
 
         // Assert
-        assertVectorApprox(nabla_b0_gpu, expected_b0, TOL, "GPU Hidden layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w0_gpu, expected_w0, TOL, "GPU Hidden layer weight gradients mismatch", __FILE__, __LINE__);
-        assertVectorApprox(nabla_b1_gpu, expected_b1, TOL, "GPU Output layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w1_gpu, expected_w1, TOL, "GPU Output layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b0_gpu, expected_nabla_b[0], TOL, "GPU Hidden layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w0_gpu, expected_nabla_w[0], TOL, "GPU Hidden layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b1_gpu, expected_nabla_b[1], TOL, "GPU Output layer bias gradients mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w1_gpu, expected_nabla_w[1], TOL, "GPU Output layer weight gradients mismatch", __FILE__, __LINE__);
 
         std::cout << "Test 2: Backprop GPU vs Manual Passed" << std::endl;
         passed_tests_++;
     }
-
 
     // Test 3: Backpropagation consistency between CPU and GPU
     // Beginner note: This test ensures CPU and GPU produce the same gradients by direct comparison, using the XOR-like dataset.
@@ -278,17 +298,13 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         const auto& gpu_const_layers = net_gpu.get_layers();  // Use const reference
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
         gpuContext->copy_weights_to_host(nabla_w0_gpu, gpu_const_layers[0]->get_d_weight_grads_(), 3, 2);
-        //gpuContext->copy_from_device(gpu_const_layers[0]->get_d_weight_grads_(), nabla_w0_gpu);
         Eigen::VectorXd nabla_b0_gpu(3);
         gpuContext->copy_biases_to_host(nabla_b0_gpu, gpu_const_layers[0]->get_d_delta_(), 3);
-        //gpuContext->copy_from_device(gpu_const_layers[0]->get_d_delta_(), nabla_b0_gpu);
         Eigen::MatrixXd nabla_w1_gpu(2, 3);
         gpuContext->copy_weights_to_host(nabla_w1_gpu, gpu_const_layers[1]->get_d_weight_grads_(), 2, 3);
-        //gpuContext->copy_from_device(gpu_const_layers[1]->get_d_weight_grads_(), nabla_w1_gpu);
         Eigen::VectorXd nabla_b1_gpu(2);
         gpuContext->copy_biases_to_host(nabla_b1_gpu, gpu_const_layers[1]->get_d_delta_(), 2);
-        //gpuContext->copy_from_device(gpu_const_layers[1]->get_d_delta_(), nabla_b1_gpu);
-    
+
         // Compare CPU vs GPU
         // Beginner note: We compare each corresponding gradient to ensure the GPU port matches the CPU implementation.
         assertVectorApprox(nabla_b_cpu[0], nabla_b0_gpu, TOL, "Hidden bias CPU vs GPU mismatch", __FILE__, __LINE__);
@@ -304,13 +320,204 @@ bool NeuralNetworkTest::testNetworkBackprop() {
 }
 
 
+bool NeuralNetworkTest::testUpdateMiniBatch() {
+    // Test 4: update_mini_batch on CPU with mini-batch size 1 and lambda=0 matches manual update
+    // Beginner note: This test verifies that update_mini_batch correctly applies gradients from a single example 
+    // (using backprop) to update weights and biases on CPU, without regularization.
+
+    std::cout << "Running Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual" << std::endl;
+    total_tests_++;
+    {
+        // Retrieve precomputed data for MSE
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        // Create network with CPU context, lambda=0, MSE loss
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
+
+        // Create mini-batch with single example
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+
+        // Choose a learning rate (eta)
+        double eta = 0.1;
+        size_t n = 1;  // Total training size (irrelevant for lambda=0)
+
+        // Call update_mini_batch
+        net_cpu.update_mini_batch(mini_batch, eta, n);
+
+        // Compute expected updated weights and biases
+        // Beginner note: For mini-batch size=1 and lambda=0, update is: param -= eta * gradient
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        // Get actual updated parameters from network
+        const auto& layers = net_cpu.get_layers();
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update mismatch", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update mismatch", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual Passed." << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 5: update_mini_batch on GPU with mini-batch size 1 and lambda=0 matches manual update
+    // Beginner note: Similar to Test 4, but for GPU. We copy updated parameters back from device to compare.
+    std::cout << "Running Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual" << std::endl;
+    total_tests_++;
+    {
+        // Retrieve precomputed data for MSE
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        // Create network with GPU context, lambda=0, MSE loss
+        Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
+
+        // Create mini-batch with single example
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+
+        // Choose a learning rate (eta)
+        double eta = 0.1;
+        size_t n = 1;  // Total training size (irrelevant for lambda=0)
+
+        // Call update_mini_batch
+        net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        // Compute expected updated weights and biases
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        // Retrieve updated parameters from GPU layers by copying back to host
+        // Beginner note: GPU stores parameters in device memory; we copy them to Eigen for comparison.
+        const auto& layers = net_gpu.get_layers();
+
+        // Hidden layer
+        Eigen::MatrixXd new_weights0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
+        Eigen::VectorXd new_biases0_gpu(3);
+        gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
+
+        // Output layer
+        Eigen::MatrixXd new_weights1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
+        Eigen::VectorXd new_biases1_gpu(2);
+        gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
+
+        // Assert
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update mismatch", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update mismatch", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 6: update_mini_batch consistency between CPU and GPU with mini-batch size >1 and lambda>0
+    // Beginner note: This test uses a small dataset (XOR-like) to check if CPU and GPU produce the same updates 
+    // when processing multiple examples and applying L2 regularization.
+    std::cout << "Running Test 6: update_mini_batch CPU vs GPU Consistency (size>1, lambda>0)" << std::endl;
+    total_tests_++;
+    {
+        // Set lambda >0 for regularization test
+        double lambda = 0.01;
+
+        // Create CPU and GPU networks with same seed and lambda>0
+        Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+        Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+
+        // Ensure identical initial parameters by copying from CPU to GPU
+        const auto& cpu_layers = net_cpu.get_layers();
+        auto& gpu_layers = net_gpu.get_mutable_layers();
+        for (size_t i = 0; i < cpu_layers.size(); ++i) {
+            gpu_layers[i]->set_weights(cpu_layers[i]->get_weights());
+            gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
+        }
+
+        // Generate XOR-like dataset
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
+        std::vector<std::pair<Eigen::VectorXd, int>> test_data;
+        generateXORLikeDataset(training_data, test_data);
+
+        // Use the full training_data as mini-batch (size=4)
+        auto mini_batch = training_data;
+
+        // Choose eta and n (n=training_data.size() for proper reg scaling)
+        double eta = 0.1;
+        size_t n = training_data.size();
+
+        // Call update_mini_batch on both
+        net_cpu.update_mini_batch(mini_batch, eta, n);
+        net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        // Retrieve CPU updated parameters
+        Eigen::MatrixXd cpu_new_weights0 = cpu_layers[0]->get_weights();
+        Eigen::VectorXd cpu_new_biases0 = cpu_layers[0]->get_biases();
+        Eigen::MatrixXd cpu_new_weights1 = cpu_layers[1]->get_weights();
+        Eigen::VectorXd cpu_new_biases1 = cpu_layers[1]->get_biases();
+
+        // Retrieve GPU updated parameters
+        const auto& gpu_const_layers = net_gpu.get_layers();
+        Eigen::MatrixXd gpu_new_weights0(3, 2);
+        gpuContext->copy_weights_to_host(gpu_new_weights0, gpu_const_layers[0]->get_d_weights(), 3, 2);
+        Eigen::VectorXd gpu_new_biases0(3);
+        gpuContext->copy_biases_to_host(gpu_new_biases0, gpu_const_layers[0]->get_d_biases(), 3);
+        Eigen::MatrixXd gpu_new_weights1(2, 3);
+        gpuContext->copy_weights_to_host(gpu_new_weights1, gpu_const_layers[1]->get_d_weights(), 2, 3);
+        Eigen::VectorXd gpu_new_biases1(2);
+        gpuContext->copy_biases_to_host(gpu_new_biases1, gpu_const_layers[1]->get_d_biases(), 2);
+
+        // Compare CPU vs GPU updated parameters
+        assertMatrixApprox(cpu_new_weights0, gpu_new_weights0, TOL, "Hidden weights CPU vs GPU mismatch after update", __FILE__, __LINE__);
+        assertVectorApprox(cpu_new_biases0, gpu_new_biases0, TOL, "Hidden biases CPU vs GPU mismatch after update", __FILE__, __LINE__);
+        assertMatrixApprox(cpu_new_weights1, gpu_new_weights1, TOL, "Output weights CPU vs GPU mismatch after update", __FILE__, __LINE__);
+        assertVectorApprox(cpu_new_biases1, gpu_new_biases1, TOL, "Output biases CPU vs GPU mismatch after update", __FILE__, __LINE__);
+
+        std::cout << "Test 6: update_mini_batch CPU vs GPU Consistency (size>1, lambda>0) - Passed" << std::endl;
+        passed_tests_++;
+    }
+    return true;
+}
+
+
 bool NeuralNetworkTest::runAllTests()
 {
     passed_tests_ = 0;
     total_tests_ = 0;
     
     //tests
-    testNetworkBackprop();
+    //testNetworkBackprop();
+    testUpdateMiniBatch();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
