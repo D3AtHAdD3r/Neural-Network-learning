@@ -29,7 +29,7 @@ public:
 public:
     bool testNetworkBackprop();
     bool testUpdateMiniBatch();
-
+    bool customtest();
 public:
     bool runAllTests();
 

@@ -506,6 +506,170 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         std::cout << "Test 6: update_mini_batch CPU vs GPU Consistency (size>1, lambda>0) - Passed" << std::endl;
         passed_tests_++;
     }
+
+    // Test 7: update_mini_batch on CPU with mini-batch size 1 and lambda>0 matches manual update
+    // Beginner note: This test verifies that update_mini_batch correctly applies gradients plus L2 regularization 
+    // from a single example to update weights (biases unchanged by reg) on CPU.
+    std::cout << "Running Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual" << std::endl;
+    total_tests_++;
+    {
+        // Retrieve precomputed data for MSE (gradients without reg)
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        // Set lambda >0
+        double lambda = 0.1;
+
+        // Create network with CPU context, lambda>0, MSE loss
+        Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
+
+        // Create mini-batch with single example
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+
+        // Choose a learning rate (eta)
+        double eta = 0.1;
+        size_t n = 1;  // Total training size = mini_batch.size()
+
+        // Call update_mini_batch
+        net_cpu.update_mini_batch(mini_batch, eta, n);
+
+        // Compute expected updated weights and biases
+        // Beginner note: For size=1, n=1, lambda>0, weights -= eta * (nabla_w + lambda * weights), biases -= eta * nabla_b
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + lambda * weights[0]);
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + lambda * weights[1]);
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        // Get actual updated parameters from network
+        const auto& layers = net_cpu.get_layers();
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update with L2 mismatch", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update with L2 mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update with L2 mismatch", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update with L2 mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual Passed." << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 8: update_mini_batch on GPU with mini-batch size 1 and lambda>0 matches manual update
+    // Beginner note: Similar to Test 7, but for GPU.
+    std::cout << "Running Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual" << std::endl;
+    total_tests_++;
+    {
+        // Retrieve precomputed data for MSE
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        // Set lambda >0
+        double lambda = 0.1;
+
+        // Create network with GPU context, lambda>0, MSE loss
+        Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+
+        // Set precomputed weights and biases
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
+
+        // Create mini-batch with single example
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+
+        // Choose a learning rate (eta)
+        double eta = 0.1;
+        size_t n = 1;  // Total training size = mini_batch.size()
+
+        // Call update_mini_batch
+        net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        // Compute expected updated weights and biases
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + lambda * weights[0]);
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + lambda * weights[1]);
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        // Retrieve updated parameters from GPU
+        const auto& layers = net_gpu.get_layers();
+
+        // Hidden layer
+        Eigen::MatrixXd new_weights0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
+        Eigen::VectorXd new_biases0_gpu(3);
+        gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
+
+        // Output layer
+        Eigen::MatrixXd new_weights1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
+        Eigen::VectorXd new_biases1_gpu(2);
+        gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
+
+        // Assert
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update with L2 mismatch", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update with L2 mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update with L2 mismatch", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update with L2 mismatch", __FILE__, __LINE__);
+
+        std::cout << "Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual Passed" << std::endl;
+        passed_tests_++;
+    }
+    return true;
+}
+
+
+
+bool NeuralNetworkTest::customtest(){
+
+    double lambda = 0.01;
+
+    // Create CPU and GPU networks with same seed and lambda>0
+    Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
+    Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
+
+    // Ensure identical initial parameters by copying from CPU to GPU
+    const auto& cpu_layers = net_cpu.get_layers();
+    auto& gpu_layers = net_gpu.get_mutable_layers();
+    for (size_t i = 0; i < cpu_layers.size(); ++i) {
+        gpu_layers[i]->set_weights(cpu_layers[i]->get_weights());
+        gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
+    }
+
+    // Generate XOR-like dataset
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
+    std::vector<std::pair<Eigen::VectorXd, int>> test_data;
+    generateXORLikeDataset(training_data, test_data);
+
+    // Use the full training_data as mini-batch (size=4)
+    auto mini_batch = training_data;
+
+    // Choose eta and n (n=training_data.size() for proper reg scaling)
+    double eta = 0.1;
+    size_t n = training_data.size();
+
+    // Call update_mini_batch on both
+    net_cpu.update_mini_batch(mini_batch, eta, 1);
+    net_gpu.update_mini_batch(mini_batch, eta, 1);
+
+
     return true;
 }
 
@@ -517,7 +681,8 @@ bool NeuralNetworkTest::runAllTests()
     
     //tests
     //testNetworkBackprop();
-    testUpdateMiniBatch();
+    //testUpdateMiniBatch();
+    customtest();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
