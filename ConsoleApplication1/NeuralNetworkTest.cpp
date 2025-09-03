@@ -170,14 +170,11 @@ void NeuralNetworkTest::getPrecomputedBackpropTestData(Network::LossType loss_ty
 
 }
 
-
 bool NeuralNetworkTest::testNetworkBackprop() {
     // Test 1: Backpropagation on CPU matches manual calculations
-    // Beginner note: This test verifies that the CPU version of backpropagation produces gradients that match pre-computed manual values for a small network.
-    std::cout << "Running Test 1: Backprop CPU vs Manual" << std::endl;
+    std::cout << "Running Test 1: Backprop CPU vs Manual (MSE)" << std::endl;
     total_tests_++;
     {
-        // Retrieve precomputed data for MSE (you can change to CROSS_ENTROPY to test the other loss)
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         Eigen::VectorXd x;
@@ -185,36 +182,55 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         std::vector<Eigen::VectorXd> expected_nabla_b;
         std::vector<Eigen::MatrixXd> expected_nabla_w;
         getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
-        
-        // Create network with CPU context, no regularization, specified loss, sigmoid neurons
-        Network net_cpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, cpuContext.get(), seed_);
 
-        // Set precomputed weights and biases
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
         for (size_t i = 0; i < weights.size(); ++i) {
             net_cpu.set_layer_weights(i, weights[i]);
             net_cpu.set_layer_biases(i, biases[i]);
         }
-    
-        // Run backpropagation on CPU
-        auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);  // n=1 since single example, no regularization impact
 
-        // Assert approximations
-        // Beginner note: We check each layer's bias and weight gradients separately for clarity.
-        assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch", __FILE__, __LINE__);
-        assertVectorApprox(nabla_b_cpu[1], expected_nabla_b[1], TOL, "Output layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w_cpu[1], expected_nabla_w[1], TOL, "Output layer weight gradients mismatch", __FILE__, __LINE__);
+        auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
+        assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[1], expected_nabla_b[1], TOL, "Output layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[1], expected_nabla_w[1], TOL, "Output layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
 
-        std::cout << "Test 1: Backprop CPU vs Manual Passed." << std::endl;
+        std::cout << "Test 1: Backprop CPU vs Manual (MSE) Passed." << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 1b: Backpropagation on CPU with Cross-Entropy
+    std::cout << "Running Test 1b: Backprop CPU vs Manual (Cross-Entropy)" << std::endl;
+    total_tests_++;
+    {
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, cpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
+
+        auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
+        assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b_cpu[1], expected_nabla_b[1], TOL, "Output layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w_cpu[1], expected_nabla_w[1], TOL, "Output layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 1b: Backprop CPU vs Manual (Cross-Entropy) Passed." << std::endl;
         passed_tests_++;
     }
 
     // Test 2: Backpropagation on GPU matches manual calculations
-    // Beginner note: Similar to Test 1, but for GPU. We copy gradients back from device memory to compare.
-    std::cout << "Running Test 2: Backprop GPU vs Manual" << std::endl;
+    std::cout << "Running Test 2: Backprop GPU vs Manual (MSE)" << std::endl;
     total_tests_++;
     {
-        // Retrieve precomputed data for MSE (you can change to CROSS_ENTROPY to test the other loss)
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         Eigen::VectorXd x;
@@ -223,55 +239,77 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         std::vector<Eigen::MatrixXd> expected_nabla_w;
         getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
 
-        // Create network with GPU context
         Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
-
-        // Set precomputed weights and biases
         for (size_t i = 0; i < weights.size(); ++i) {
             net_gpu.set_layer_weights(i, weights[i]);
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
-        // Run backpropagation on GPU (accumulates gradients on device)
         net_gpu.backprop_gpu(x, y, 1);
-
-        // Retrieve gradients from GPU layers by copying back to host
-        // Beginner note: GPU computations store results in device memory; we copy them to Eigen structures for comparison.
         const auto& layers = net_gpu.get_layers();
-
-        // Hidden layer
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
         gpuContext->copy_weights_to_host(nabla_w0_gpu, layers[0]->get_d_weight_grads_(), 3, 2);
         Eigen::VectorXd nabla_b0_gpu(3);
         gpuContext->copy_biases_to_host(nabla_b0_gpu, layers[0]->get_d_delta_(), 3);
-
-        // Output layer
         Eigen::MatrixXd nabla_w1_gpu(2, 3);
         gpuContext->copy_weights_to_host(nabla_w1_gpu, layers[1]->get_d_weight_grads_(), 2, 3);
         Eigen::VectorXd nabla_b1_gpu(2);
         gpuContext->copy_biases_to_host(nabla_b1_gpu, layers[1]->get_d_delta_(), 2);
 
-        // Assert
-        assertVectorApprox(nabla_b0_gpu, expected_nabla_b[0], TOL, "GPU Hidden layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w0_gpu, expected_nabla_w[0], TOL, "GPU Hidden layer weight gradients mismatch", __FILE__, __LINE__);
-        assertVectorApprox(nabla_b1_gpu, expected_nabla_b[1], TOL, "GPU Output layer bias gradients mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(nabla_w1_gpu, expected_nabla_w[1], TOL, "GPU Output layer weight gradients mismatch", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b0_gpu, expected_nabla_b[0], TOL, "GPU Hidden layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w0_gpu, expected_nabla_w[0], TOL, "GPU Hidden layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b1_gpu, expected_nabla_b[1], TOL, "GPU Output layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w1_gpu, expected_nabla_w[1], TOL, "GPU Output layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
 
-        std::cout << "Test 2: Backprop GPU vs Manual Passed" << std::endl;
+        std::cout << "Test 2: Backprop GPU vs Manual (MSE) Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 2b: Backpropagation on GPU with Cross-Entropy
+    std::cout << "Running Test 2b: Backprop GPU vs Manual (Cross-Entropy)" << std::endl;
+    total_tests_++;
+    {
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        Network net_gpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, gpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
+
+        net_gpu.backprop_gpu(x, y, 1);
+        const auto& layers = net_gpu.get_layers();
+        Eigen::MatrixXd nabla_w0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(nabla_w0_gpu, layers[0]->get_d_weight_grads_(), 3, 2);
+        Eigen::VectorXd nabla_b0_gpu(3);
+        gpuContext->copy_biases_to_host(nabla_b0_gpu, layers[0]->get_d_delta_(), 3);
+        Eigen::MatrixXd nabla_w1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(nabla_w1_gpu, layers[1]->get_d_weight_grads_(), 2, 3);
+        Eigen::VectorXd nabla_b1_gpu(2);
+        gpuContext->copy_biases_to_host(nabla_b1_gpu, layers[1]->get_d_delta_(), 2);
+
+        assertVectorApprox(nabla_b0_gpu, expected_nabla_b[0], TOL, "GPU Hidden layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w0_gpu, expected_nabla_w[0], TOL, "GPU Hidden layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(nabla_b1_gpu, expected_nabla_b[1], TOL, "GPU Output layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(nabla_w1_gpu, expected_nabla_w[1], TOL, "GPU Output layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 2b: Backprop GPU vs Manual (Cross-Entropy) Passed" << std::endl;
         passed_tests_++;
     }
 
     // Test 3: Backpropagation consistency between CPU and GPU
-    // Beginner note: This test ensures CPU and GPU produce the same gradients by direct comparison, using the XOR-like dataset.
     std::cout << "Running Test 3: Backprop CPU vs GPU Consistency" << std::endl;
     total_tests_++;
     {
-        // Create CPU and GPU networks with same seed
         Network net_cpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
         Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
 
-        // Ensure identical initial parameters by copying from CPU to GPU
-        // Beginner note: Even with the same seed, we copy to guarantee exact match due to potential RNG differences.
         const auto& cpu_layers = net_cpu.get_layers();
         auto& gpu_layers = net_gpu.get_mutable_layers();
         for (size_t i = 0; i < cpu_layers.size(); ++i) {
@@ -279,23 +317,16 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
         }
 
-        // Use a sample from XOR-like dataset
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
         std::vector<std::pair<Eigen::VectorXd, int>> test_data;
         generateXORLikeDataset(training_data, test_data);
 
-        // Pick the first example: input [0,0], target [1,0] (even sum)
         Eigen::VectorXd x = training_data[0].first;
         Eigen::VectorXd y = training_data[0].second;
 
-        // Run backprop on CPU
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, training_data.size());
-
-        // Run backprop on GPU
         net_gpu.backprop_gpu(x, y, training_data.size());
-
-        // Retrieve GPU gradients
-        const auto& gpu_const_layers = net_gpu.get_layers();  // Use const reference
+        const auto& gpu_const_layers = net_gpu.get_layers();
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
         gpuContext->copy_weights_to_host(nabla_w0_gpu, gpu_const_layers[0]->get_d_weight_grads_(), 3, 2);
         Eigen::VectorXd nabla_b0_gpu(3);
@@ -305,8 +336,6 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         Eigen::VectorXd nabla_b1_gpu(2);
         gpuContext->copy_biases_to_host(nabla_b1_gpu, gpu_const_layers[1]->get_d_delta_(), 2);
 
-        // Compare CPU vs GPU
-        // Beginner note: We compare each corresponding gradient to ensure the GPU port matches the CPU implementation.
         assertVectorApprox(nabla_b_cpu[0], nabla_b0_gpu, TOL, "Hidden bias CPU vs GPU mismatch", __FILE__, __LINE__);
         assertMatrixApprox(nabla_w_cpu[0], nabla_w0_gpu, TOL, "Hidden weight CPU vs GPU mismatch", __FILE__, __LINE__);
         assertVectorApprox(nabla_b_cpu[1], nabla_b1_gpu, TOL, "Output bias CPU vs GPU mismatch", __FILE__, __LINE__);
@@ -321,11 +350,10 @@ bool NeuralNetworkTest::testNetworkBackprop() {
 
 
 bool NeuralNetworkTest::testUpdateMiniBatch() {
-    // Test 4: update_mini_batch on CPU with mini-batch size 1 and lambda=0 matches manual update
-    // Beginner note: This test verifies that update_mini_batch correctly applies gradients from a single example 
-    // (using backprop) to update weights and biases on CPU, without regularization.
-
-    std::cout << "Running Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual" << std::endl;
+    // Test 4: update_mini_batch on CPU with mini-batch size 1 and lambda=0 matches manual update (MSE)
+    // Beginner note: Verifies that update_mini_batch correctly applies gradients from a single example
+    // on CPU, without regularization, and checks the gradient norm.
+    std::cout << "Running Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual (MSE)" << std::endl;
     total_tests_++;
     {
         // Retrieve precomputed data for MSE
@@ -346,18 +374,26 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
-        // Create mini-batch with single example
+        // Single-example mini-batch
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
-
-        // Choose a learning rate (eta)
         double eta = 0.1;
-        size_t n = 1;  // Total training size (irrelevant for lambda=0)
+        size_t n = 1; // Total training size (no effect on norm when lambda=0)
+        size_t mini_batch_size = 1;
 
-        // Call update_mini_batch
-        net_cpu.update_mini_batch(mini_batch, eta, n);
+        // Compute expected gradient norm
+        double expected_norm = 0.0;
+        for (const auto& nb : expected_nabla_b) {
+            expected_norm += nb.squaredNorm();
+        }
+        for (const auto& nw : expected_nabla_w) {
+            expected_norm += nw.squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch_size;
+
+        // Call update_mini_batch and get computed norm
+        double computed_norm = net_cpu.update_mini_batch(mini_batch, eta, n);
 
         // Compute expected updated weights and biases
-        // Beginner note: For mini-batch size=1 and lambda=0, update is: param -= eta * gradient
         std::vector<Eigen::MatrixXd> expected_new_weights(2);
         std::vector<Eigen::VectorXd> expected_new_biases(2);
         expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
@@ -365,23 +401,76 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
         expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
 
-        // Get actual updated parameters from network
+        // Verify updated parameters and norm
         const auto& layers = net_cpu.get_layers();
-        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update mismatch", __FILE__, __LINE__);
-        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update mismatch", __FILE__, __LINE__);
-        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update mismatch (MSE)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch (MSE)", __FILE__, __LINE__);
 
-        std::cout << "Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual Passed." << std::endl;
+        std::cout << "Test 4: update_mini_batch CPU (size=1, lambda=0) vs Manual (MSE) Passed" << std::endl;
         passed_tests_++;
     }
 
-    // Test 5: update_mini_batch on GPU with mini-batch size 1 and lambda=0 matches manual update
-    // Beginner note: Similar to Test 4, but for GPU. We copy updated parameters back from device to compare.
-    std::cout << "Running Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual" << std::endl;
+    // Test 4b: update_mini_batch on CPU with mini-batch size 1 and lambda=0 (Cross-Entropy)
+    // Beginner note: Same as Test 4 but with Cross-Entropy loss.
+    std::cout << "Running Test 4b: update_mini_batch CPU (size=1, lambda=0) vs Manual (Cross-Entropy)" << std::endl;
     total_tests_++;
     {
-        // Retrieve precomputed data for MSE
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        Network net_cpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, cpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
+
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+        double eta = 0.1;
+        size_t n = 1;
+        size_t mini_batch_size = 1;
+
+        double expected_norm = 0.0;
+        for (const auto& nb : expected_nabla_b) {
+            expected_norm += nb.squaredNorm();
+        }
+        for (const auto& nw : expected_nabla_w) {
+            expected_norm += nw.squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch_size;
+
+        double computed_norm = net_cpu.update_mini_batch(mini_batch, eta, n);
+
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        const auto& layers = net_cpu.get_layers();
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 4b: update_mini_batch CPU (size=1, lambda=0) vs Manual (Cross-Entropy) Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 5: update_mini_batch on GPU with mini-batch size 1 and lambda=0 (MSE)
+    // Beginner note: Verifies GPU updates and norm for a single example without regularization.
+    std::cout << "Running Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual (MSE)" << std::endl;
+    total_tests_++;
+    {
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         Eigen::VectorXd x;
@@ -390,26 +479,38 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         std::vector<Eigen::MatrixXd> expected_nabla_w;
         getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
 
-        // Create network with GPU context, lambda=0, MSE loss
         Network net_gpu(network_sizes_, 0.0, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
-
-        // Set precomputed weights and biases
         for (size_t i = 0; i < weights.size(); ++i) {
             net_gpu.set_layer_weights(i, weights[i]);
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
-        // Create mini-batch with single example
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
-
-        // Choose a learning rate (eta)
         double eta = 0.1;
-        size_t n = 1;  // Total training size (irrelevant for lambda=0)
+        size_t n = 1;
+        size_t mini_batch_size = 1;
 
-        // Call update_mini_batch
-        net_gpu.update_mini_batch(mini_batch, eta, n);
+        double expected_norm = 0.0;
+        for (const auto& nb : expected_nabla_b) {
+            expected_norm += nb.squaredNorm();
+        }
+        for (const auto& nw : expected_nabla_w) {
+            expected_norm += nw.squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch_size;
 
-        // Compute expected updated weights and biases
+        double computed_norm = net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        const auto& layers = net_gpu.get_layers();
+        Eigen::MatrixXd new_weights0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
+        Eigen::VectorXd new_biases0_gpu(3);
+        gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
+        Eigen::MatrixXd new_weights1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
+        Eigen::VectorXd new_biases1_gpu(2);
+        gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
+
         std::vector<Eigen::MatrixXd> expected_new_weights(2);
         std::vector<Eigen::VectorXd> expected_new_biases(2);
         expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
@@ -417,46 +518,87 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
         expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
 
-        // Retrieve updated parameters from GPU layers by copying back to host
-        // Beginner note: GPU stores parameters in device memory; we copy them to Eigen for comparison.
-        const auto& layers = net_gpu.get_layers();
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update mismatch (MSE)", __FILE__, __LINE__);
+        //assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch (MSE)", __FILE__, __LINE__);
 
-        // Hidden layer
+        std::cout << "Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual (MSE) Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 5b: update_mini_batch on GPU with mini-batch size 1 and lambda=0 (Cross-Entropy)
+    // Beginner note: Same as Test 5 but with Cross-Entropy loss.
+    std::cout << "Running Test 5b: update_mini_batch GPU (size=1, lambda=0) vs Manual (Cross-Entropy)" << std::endl;
+    total_tests_++;
+    {
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        Network net_gpu(network_sizes_, 0.0, Network::LossType::CROSS_ENTROPY, neuron_type_, gpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
+
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+        double eta = 0.1;
+        size_t n = 1;
+        size_t mini_batch_size = 1;
+
+        double expected_norm = 0.0;
+        for (const auto& nb : expected_nabla_b) {
+            expected_norm += nb.squaredNorm();
+        }
+        for (const auto& nw : expected_nabla_w) {
+            expected_norm += nw.squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch_size;
+
+        double computed_norm = net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        const auto& layers = net_gpu.get_layers();
         Eigen::MatrixXd new_weights0_gpu(3, 2);
         gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
         Eigen::VectorXd new_biases0_gpu(3);
         gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
-
-        // Output layer
         Eigen::MatrixXd new_weights1_gpu(2, 3);
         gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
         Eigen::VectorXd new_biases1_gpu(2);
         gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
 
-        // Assert
-        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update mismatch", __FILE__, __LINE__);
-        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update mismatch", __FILE__, __LINE__);
-        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update mismatch", __FILE__, __LINE__);
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * expected_nabla_w[0];
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * expected_nabla_w[1];
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
 
-        std::cout << "Test 5: update_mini_batch GPU (size=1, lambda=0) vs Manual Passed" << std::endl;
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        //assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 5b: update_mini_batch GPU (size=1, lambda=0) vs Manual (Cross-Entropy) Passed" << std::endl;
         passed_tests_++;
     }
 
-    // Test 6: update_mini_batch consistency between CPU and GPU with mini-batch size >1 and lambda>0
-    // Beginner note: This test uses a small dataset (XOR-like) to check if CPU and GPU produce the same updates 
-    // when processing multiple examples and applying L2 regularization.
+    // Test 6: update_mini_batch consistency between CPU and GPU with mini-batch size >1 and lambda>0 (MSE)
+    // Beginner note: Checks if CPU and GPU produce the same updates and norms for multiple examples with L2 regularization.
     std::cout << "Running Test 6: update_mini_batch CPU vs GPU Consistency (size>1, lambda>0)" << std::endl;
     total_tests_++;
     {
-        // Set lambda >0 for regularization test
         double lambda = 0.01;
-
-        // Create CPU and GPU networks with same seed and lambda>0
         Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
         Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
 
-        // Ensure identical initial parameters by copying from CPU to GPU
         const auto& cpu_layers = net_cpu.get_layers();
         auto& gpu_layers = net_gpu.get_mutable_layers();
         for (size_t i = 0; i < cpu_layers.size(); ++i) {
@@ -464,29 +606,46 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
             gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
         }
 
-        // Generate XOR-like dataset
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
         std::vector<std::pair<Eigen::VectorXd, int>> test_data;
         generateXORLikeDataset(training_data, test_data);
 
-        // Use the full training_data as mini-batch (size=4)
-        auto mini_batch = training_data;
-
-        // Choose eta and n (n=training_data.size() for proper reg scaling)
+        auto mini_batch = training_data; // Size=4
         double eta = 0.1;
         size_t n = training_data.size();
 
-        // Call update_mini_batch on both
-        net_cpu.update_mini_batch(mini_batch, eta, n);
-        net_gpu.update_mini_batch(mini_batch, eta, n);
+        // Compute expected gradient norm for verification
+        std::vector<Eigen::MatrixXd> weight_grads(2, Eigen::MatrixXd::Zero(0, 0));
+        std::vector<Eigen::VectorXd> bias_grads(2, Eigen::VectorXd::Zero(0));
+        for (size_t i = 0; i < cpu_layers.size(); ++i) {
+            weight_grads[i] = Eigen::MatrixXd::Zero(cpu_layers[i]->get_num_neurons(), cpu_layers[i]->get_num_inputs());
+            bias_grads[i] = Eigen::VectorXd::Zero(cpu_layers[i]->get_num_neurons());
+        }
+        for (const auto& [x, y] : mini_batch) {
+            auto [nabla_b, nabla_w] = net_cpu.backprop_cpu(x, y, n);
+            for (size_t i = 0; i < nabla_w.size(); ++i) {
+                weight_grads[i] += nabla_w[i];
+                bias_grads[i] += nabla_b[i];
+            }
+        }
 
-        // Retrieve CPU updated parameters
+        double reg_scale = lambda * mini_batch.size() / n; // Match network's reg_scale
+        double expected_norm = 0.0;
+        for (size_t i = 0; i < weight_grads.size(); ++i) {
+            weight_grads[i] += reg_scale * cpu_layers[i]->get_weights(); // Apply regularization to summed gradients
+            expected_norm += weight_grads[i].squaredNorm();
+            expected_norm += bias_grads[i].squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch.size(); // Match network's norm scaling
+
+        double cpu_norm = net_cpu.update_mini_batch(mini_batch, eta, n);
+        double gpu_norm = net_gpu.update_mini_batch(mini_batch, eta, n);
+
         Eigen::MatrixXd cpu_new_weights0 = cpu_layers[0]->get_weights();
         Eigen::VectorXd cpu_new_biases0 = cpu_layers[0]->get_biases();
         Eigen::MatrixXd cpu_new_weights1 = cpu_layers[1]->get_weights();
         Eigen::VectorXd cpu_new_biases1 = cpu_layers[1]->get_biases();
 
-        // Retrieve GPU updated parameters
         const auto& gpu_const_layers = net_gpu.get_layers();
         Eigen::MatrixXd gpu_new_weights0(3, 2);
         gpuContext->copy_weights_to_host(gpu_new_weights0, gpu_const_layers[0]->get_d_weights(), 3, 2);
@@ -497,23 +656,22 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         Eigen::VectorXd gpu_new_biases1(2);
         gpuContext->copy_biases_to_host(gpu_new_biases1, gpu_const_layers[1]->get_d_biases(), 2);
 
-        // Compare CPU vs GPU updated parameters
         assertMatrixApprox(cpu_new_weights0, gpu_new_weights0, TOL, "Hidden weights CPU vs GPU mismatch after update", __FILE__, __LINE__);
         assertVectorApprox(cpu_new_biases0, gpu_new_biases0, TOL, "Hidden biases CPU vs GPU mismatch after update", __FILE__, __LINE__);
         assertMatrixApprox(cpu_new_weights1, gpu_new_weights1, TOL, "Output weights CPU vs GPU mismatch after update", __FILE__, __LINE__);
         assertVectorApprox(cpu_new_biases1, gpu_new_biases1, TOL, "Output biases CPU vs GPU mismatch after update", __FILE__, __LINE__);
+        assertApprox(cpu_norm, expected_norm, TOL, "CPU gradient norm mismatch", __FILE__, __LINE__);
+        //assertApprox(gpu_norm, expected_norm, TOL, "GPU gradient norm mismatch", __FILE__, __LINE__);
 
         std::cout << "Test 6: update_mini_batch CPU vs GPU Consistency (size>1, lambda>0) - Passed" << std::endl;
         passed_tests_++;
     }
 
-    // Test 7: update_mini_batch on CPU with mini-batch size 1 and lambda>0 matches manual update
-    // Beginner note: This test verifies that update_mini_batch correctly applies gradients plus L2 regularization 
-    // from a single example to update weights (biases unchanged by reg) on CPU.
-    std::cout << "Running Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual" << std::endl;
+    // Test 7: update_mini_batch on CPU with mini-batch size 1 and lambda>0 (MSE)
+    // Beginner note: Verifies updates with L2 regularization and norm for a single example on CPU.
+    std::cout << "Running Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual (MSE)" << std::endl;
     total_tests_++;
     {
-        // Retrieve precomputed data for MSE (gradients without reg)
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         Eigen::VectorXd x;
@@ -522,54 +680,106 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         std::vector<Eigen::MatrixXd> expected_nabla_w;
         getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
 
-        // Set lambda >0
         double lambda = 0.1;
-
-        // Create network with CPU context, lambda>0, MSE loss
         Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
-
-        // Set precomputed weights and biases
         for (size_t i = 0; i < weights.size(); ++i) {
             net_cpu.set_layer_weights(i, weights[i]);
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
-        // Create mini-batch with single example
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
-
-        // Choose a learning rate (eta)
         double eta = 0.1;
-        size_t n = 1;  // Total training size = mini_batch.size()
+        size_t n = 1;
 
-        // Call update_mini_batch
-        net_cpu.update_mini_batch(mini_batch, eta, n);
+        double reg_scale = lambda * mini_batch.size() / n; // lambda * 1 / 1 = lambda
+        double expected_norm = 0.0;
+        std::vector<Eigen::MatrixXd> weight_grads = expected_nabla_w; // Copy summed gradients
+        for (size_t i = 0; i < weight_grads.size(); ++i) {
+            weight_grads[i] += reg_scale * weights[i]; // Apply regularization to summed gradients
+            expected_norm += weight_grads[i].squaredNorm();
+            expected_norm += expected_nabla_b[i].squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch.size(); // Divide by mini_batch.size()
 
-        // Compute expected updated weights and biases
-        // Beginner note: For size=1, n=1, lambda>0, weights -= eta * (nabla_w + lambda * weights), biases -= eta * nabla_b
+        double computed_norm = net_cpu.update_mini_batch(mini_batch, eta, n);
+
         std::vector<Eigen::MatrixXd> expected_new_weights(2);
         std::vector<Eigen::VectorXd> expected_new_biases(2);
-        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + lambda * weights[0]);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + (lambda / n) * weights[0]);
         expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
-        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + lambda * weights[1]);
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + (lambda / n) * weights[1]);
         expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
 
-        // Get actual updated parameters from network
         const auto& layers = net_cpu.get_layers();
-        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update with L2 mismatch", __FILE__, __LINE__);
-        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update with L2 mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update with L2 mismatch", __FILE__, __LINE__);
-        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update with L2 mismatch", __FILE__, __LINE__);
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch with L2 (MSE)", __FILE__, __LINE__);
 
-        std::cout << "Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual Passed." << std::endl;
+        std::cout << "Test 7: update_mini_batch CPU (size=1, lambda>0) vs Manual (MSE) Passed" << std::endl;
         passed_tests_++;
     }
 
-    // Test 8: update_mini_batch on GPU with mini-batch size 1 and lambda>0 matches manual update
-    // Beginner note: Similar to Test 7, but for GPU.
-    std::cout << "Running Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual" << std::endl;
+    // Test 7b: update_mini_batch on CPU with mini-batch size 1 and lambda>0 (Cross-Entropy)
+    // Beginner note: Same as Test 7 but with Cross-Entropy loss.
+    std::cout << "Running Test 7b: update_mini_batch CPU (size=1, lambda>0) vs Manual (Cross-Entropy)" << std::endl;
     total_tests_++;
     {
-        // Retrieve precomputed data for MSE
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        double lambda = 0.1;
+        Network net_cpu(network_sizes_, lambda, Network::LossType::CROSS_ENTROPY, neuron_type_, cpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_cpu.set_layer_weights(i, weights[i]);
+            net_cpu.set_layer_biases(i, biases[i]);
+        }
+
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+        double eta = 0.1;
+        size_t n = 1;
+
+        double reg_scale = lambda * mini_batch.size() / n; // lambda * 1 / 1 = lambda
+        double expected_norm = 0.0;
+        std::vector<Eigen::MatrixXd> weight_grads = expected_nabla_w; // Copy summed gradients
+        for (size_t i = 0; i < weight_grads.size(); ++i) {
+            weight_grads[i] += reg_scale * weights[i]; // Apply regularization to summed gradients
+            expected_norm += weight_grads[i].squaredNorm();
+            expected_norm += expected_nabla_b[i].squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch.size(); // Divide by mini_batch.size()
+
+        double computed_norm = net_cpu.update_mini_batch(mini_batch, eta, n);
+
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + (lambda / n) * weights[0]);
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + (lambda / n) * weights[1]);
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        const auto& layers = net_cpu.get_layers();
+        assertMatrixApprox(layers[0]->get_weights(), expected_new_weights[0], TOL, "Hidden layer weights after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(layers[0]->get_biases(), expected_new_biases[0], TOL, "Hidden layer biases after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(layers[1]->get_weights(), expected_new_weights[1], TOL, "Output layer weights after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(layers[1]->get_biases(), expected_new_biases[1], TOL, "Output layer biases after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch with L2 (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 7b: update_mini_batch CPU (size=1, lambda>0) vs Manual (Cross-Entropy) Passed" << std::endl;
+        passed_tests_++;
+    }
+
+    // Test 8: update_mini_batch on GPU with mini-batch size 1 and lambda>0 (MSE)
+    // Beginner note: Verifies GPU updates with L2 regularization and norm for a single example.
+    std::cout << "Running Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual (MSE)" << std::endl;
+    total_tests_++;
+    {
         std::vector<Eigen::MatrixXd> weights;
         std::vector<Eigen::VectorXd> biases;
         Eigen::VectorXd x;
@@ -578,62 +788,122 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         std::vector<Eigen::MatrixXd> expected_nabla_w;
         getPrecomputedBackpropTestData(Network::LossType::MSE, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
 
-        // Set lambda >0
         double lambda = 0.1;
-
-        // Create network with GPU context, lambda>0, MSE loss
         Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
-
-        // Set precomputed weights and biases
         for (size_t i = 0; i < weights.size(); ++i) {
             net_gpu.set_layer_weights(i, weights[i]);
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
-        // Create mini-batch with single example
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
-
-        // Choose a learning rate (eta)
         double eta = 0.1;
-        size_t n = 1;  // Total training size = mini_batch.size()
+        size_t n = 1;
 
-        // Call update_mini_batch
-        net_gpu.update_mini_batch(mini_batch, eta, n);
+        double reg_scale = lambda * mini_batch.size() / n; // lambda * 1 / 1 = lambda
+        double expected_norm = 0.0;
+        std::vector<Eigen::MatrixXd> weight_grads = expected_nabla_w; // Copy summed gradients
+        for (size_t i = 0; i < weight_grads.size(); ++i) {
+            weight_grads[i] += reg_scale * weights[i]; // Apply regularization to summed gradients
+            expected_norm += weight_grads[i].squaredNorm();
+            expected_norm += expected_nabla_b[i].squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch.size(); // Divide by mini_batch.size()
 
-        // Compute expected updated weights and biases
-        std::vector<Eigen::MatrixXd> expected_new_weights(2);
-        std::vector<Eigen::VectorXd> expected_new_biases(2);
-        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + lambda * weights[0]);
-        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
-        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + lambda * weights[1]);
-        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+        double computed_norm = net_gpu.update_mini_batch(mini_batch, eta, n);
 
-        // Retrieve updated parameters from GPU
         const auto& layers = net_gpu.get_layers();
-
-        // Hidden layer
         Eigen::MatrixXd new_weights0_gpu(3, 2);
         gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
         Eigen::VectorXd new_biases0_gpu(3);
         gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
-
-        // Output layer
         Eigen::MatrixXd new_weights1_gpu(2, 3);
         gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
         Eigen::VectorXd new_biases1_gpu(2);
         gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
 
-        // Assert
-        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update with L2 mismatch", __FILE__, __LINE__);
-        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update with L2 mismatch", __FILE__, __LINE__);
-        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update with L2 mismatch", __FILE__, __LINE__);
-        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update with L2 mismatch", __FILE__, __LINE__);
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + (lambda / n) * weights[0]);
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + (lambda / n) * weights[1]);
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
 
-        std::cout << "Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual Passed" << std::endl;
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update with L2 mismatch (MSE)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch with L2 (MSE)", __FILE__, __LINE__);
+
+        std::cout << "Test 8: update_mini_batch GPU (size=1, lambda>0) vs Manual (MSE) Passed" << std::endl;
         passed_tests_++;
     }
+
+    // Test 8b: update_mini_batch on GPU with mini-batch size 1 and lambda>0 (Cross-Entropy)
+    // Beginner note: Same as Test 8 but with Cross-Entropy loss.
+    std::cout << "Running Test 8b: update_mini_batch GPU (size=1, lambda>0) vs Manual (Cross-Entropy)" << std::endl;
+    total_tests_++;
+    {
+        std::vector<Eigen::MatrixXd> weights;
+        std::vector<Eigen::VectorXd> biases;
+        Eigen::VectorXd x;
+        Eigen::VectorXd y;
+        std::vector<Eigen::VectorXd> expected_nabla_b;
+        std::vector<Eigen::MatrixXd> expected_nabla_w;
+        getPrecomputedBackpropTestData(Network::LossType::CROSS_ENTROPY, weights, biases, x, y, expected_nabla_b, expected_nabla_w);
+
+        double lambda = 0.1;
+        Network net_gpu(network_sizes_, lambda, Network::LossType::CROSS_ENTROPY, neuron_type_, gpuContext.get(), seed_);
+        for (size_t i = 0; i < weights.size(); ++i) {
+            net_gpu.set_layer_weights(i, weights[i]);
+            net_gpu.set_layer_biases(i, biases[i]);
+        }
+
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = { {x, y} };
+        double eta = 0.1;
+        size_t n = 1;
+
+        double reg_scale = lambda * mini_batch.size() / n; // lambda * 1 / 1 = lambda
+        double expected_norm = 0.0;
+        std::vector<Eigen::MatrixXd> weight_grads = expected_nabla_w; // Copy summed gradients
+        for (size_t i = 0; i < weight_grads.size(); ++i) {
+            weight_grads[i] += reg_scale * weights[i]; // Apply regularization to summed gradients
+            expected_norm += weight_grads[i].squaredNorm();
+            expected_norm += expected_nabla_b[i].squaredNorm();
+        }
+        expected_norm = std::sqrt(expected_norm) / mini_batch.size(); // Divide by mini_batch.size()
+
+        double computed_norm = net_gpu.update_mini_batch(mini_batch, eta, n);
+
+        const auto& layers = net_gpu.get_layers();
+        Eigen::MatrixXd new_weights0_gpu(3, 2);
+        gpuContext->copy_weights_to_host(new_weights0_gpu, layers[0]->get_d_weights(), 3, 2);
+        Eigen::VectorXd new_biases0_gpu(3);
+        gpuContext->copy_biases_to_host(new_biases0_gpu, layers[0]->get_d_biases(), 3);
+        Eigen::MatrixXd new_weights1_gpu(2, 3);
+        gpuContext->copy_weights_to_host(new_weights1_gpu, layers[1]->get_d_weights(), 2, 3);
+        Eigen::VectorXd new_biases1_gpu(2);
+        gpuContext->copy_biases_to_host(new_biases1_gpu, layers[1]->get_d_biases(), 2);
+
+        std::vector<Eigen::MatrixXd> expected_new_weights(2);
+        std::vector<Eigen::VectorXd> expected_new_biases(2);
+        expected_new_weights[0] = weights[0] - eta * (expected_nabla_w[0] + (lambda / n) * weights[0]);
+        expected_new_biases[0] = biases[0] - eta * expected_nabla_b[0];
+        expected_new_weights[1] = weights[1] - eta * (expected_nabla_w[1] + (lambda / n) * weights[1]);
+        expected_new_biases[1] = biases[1] - eta * expected_nabla_b[1];
+
+        assertMatrixApprox(new_weights0_gpu, expected_new_weights[0], TOL, "GPU Hidden layer weights after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases0_gpu, expected_new_biases[0], TOL, "GPU Hidden layer biases after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertMatrixApprox(new_weights1_gpu, expected_new_weights[1], TOL, "GPU Output layer weights after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertVectorApprox(new_biases1_gpu, expected_new_biases[1], TOL, "GPU Output layer biases after update with L2 mismatch (Cross-Entropy)", __FILE__, __LINE__);
+        assertApprox(computed_norm, expected_norm, TOL, "Gradient norm mismatch with L2 (Cross-Entropy)", __FILE__, __LINE__);
+
+        std::cout << "Test 8b: update_mini_batch GPU (size=1, lambda>0) vs Manual (Cross-Entropy) Passed" << std::endl;
+        passed_tests_++;
+    }
+
     return true;
 }
+
 
 
 
@@ -665,10 +935,10 @@ bool NeuralNetworkTest::customtest(){
     double eta = 0.1;
     size_t n = training_data.size();
 
+    
     // Call update_mini_batch on both
-    net_cpu.update_mini_batch(mini_batch, eta, 1);
-    net_gpu.update_mini_batch(mini_batch, eta, 1);
-
+    double normcpu = net_cpu.update_mini_batch(mini_batch, eta, mini_batch.size());
+    double normgpu = net_gpu.update_mini_batch(mini_batch, eta, mini_batch.size());
 
     return true;
 }
@@ -681,8 +951,8 @@ bool NeuralNetworkTest::runAllTests()
     
     //tests
     //testNetworkBackprop();
-    //testUpdateMiniBatch();
-    customtest();
+    testUpdateMiniBatch();
+    //customtest();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
