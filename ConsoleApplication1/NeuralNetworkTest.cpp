@@ -904,9 +904,6 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
     return true;
 }
 
-
-
-
 bool NeuralNetworkTest::customtest(){
 
     double lambda = 0.01;
