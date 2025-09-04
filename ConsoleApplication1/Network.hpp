@@ -82,6 +82,8 @@ public:
     std::vector<double*> get_layer_d_weight_grads();
     std::vector<double*> get_layer_d_delta(); //d_delta = d_bias_grads
 
+    int get_num_layers() { return num_layers; };
+    const std::vector<int>& get_layer_sizes() const { return sizes; };
 private:
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
 private:

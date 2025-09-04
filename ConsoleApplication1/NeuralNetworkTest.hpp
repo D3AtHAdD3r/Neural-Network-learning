@@ -85,7 +85,9 @@ private:
     void assertVectorApprox(const Eigen::VectorXd& a, const Eigen::VectorXd& b, double tol, const std::string& message, const char* file, int line);
     void assertMatrixApprox(const Eigen::MatrixXd& a, const Eigen::MatrixXd& b, double tol, const std::string& message, const char* file, int line);
 
-
+private:
+    //
+    void runUpdateMiniBatchTests(const std::string& context, const std::string& loss, double lambda, int batch_size);
 private:
     static constexpr double TOL = 1e-3; ///< Tolerance for floating-point comparisons
 private:
