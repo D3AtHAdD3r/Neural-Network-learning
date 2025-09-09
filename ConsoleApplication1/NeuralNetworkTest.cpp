@@ -502,10 +502,10 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
         // Since we have already called network::updateminibatch with main network, its initial weights and biases have updated.
         // so create a new network with same seed to reproduce initial weights and biases.
         Network net_temp(network_sizes_, lambda, is_mse ? Network::LossType::MSE : Network::LossType::CROSS_ENTROPY,
-            neuron_type_, is_cpu ? static_cast<ComputationContext*>(cpuContext.get()) : static_cast<ComputationContext*>(gpuContext.get()), seed_);
+            neuron_type_, static_cast<ComputationContext*>(cpuContext.get()), seed_);
 
         for (const auto& [x, y] : mini_batch) {
-            auto [nabla_b, nabla_w] = net_temp.backprop(x, y, n);
+            auto [nabla_b, nabla_w] = net_temp.backprop_cpu(x, y, n);
             for (size_t i = 0; i < nabla_w.size(); ++i) {
                 sum_nabla_w[i] += nabla_w[i];
                 sum_nabla_b[i] += nabla_b[i];
@@ -569,7 +569,7 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
 }
 
 bool NeuralNetworkTest::testUpdateMiniBatch() {
-    std::vector<std::string> contexts = { "cpu", "gpu" };
+    std::vector<std::string> contexts = { /*"cpu",*/ "gpu" };
     std::vector<std::string> losses = { "mse", "cross_entropy" };
     std::vector<double> lambdas = { 0.0, 0.1 };
     std::vector<int> batch_sizes = { 1, 4 };

@@ -165,14 +165,20 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
     double norm = 0.0;
 
     if (is_gpu_context_) {
-        // GPU path: Accumulate on device
+        // GPU path: Accumulate gradients
+        std::vector<double*> weight_grads_acc = accumulate_weight_grads;
+        std::vector<double*> bias_grads_acc = accumulate_bias_grads;
+
+        // Zero out accumulators
         for (size_t i = 0; i < layers.size(); ++i) {
-            contextGPU_->set_to_zero(accumulate_weight_grads[i], weight_rows[i] * weight_cols[i]);
-            contextGPU_->set_to_zero(accumulate_bias_grads[i], bias_sizes[i]);
+            contextGPU_->set_to_zero(weight_grads_acc[i], weight_rows[i] * weight_cols[i]);
+            contextGPU_->set_to_zero(bias_grads_acc[i], bias_sizes[i]);
         }
 
+        // Accumulate gradients over mini-batch
         for (const auto& [x, y] : mini_batch) {
-            backprop_gpu(x, y, n);  // Accumulates gradients to accumulate_weight_grads and accumulate_bias_grads
+            auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
+            contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
         }
 
         // Add L2 regularization
@@ -255,7 +261,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         break;
     };
     default:
-        //Throw some fucking error
+        throw std::runtime_error("Unsupported loss type");
         break;
     };
 
@@ -275,10 +281,13 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     return { nabla_b, nabla_w };
 }
 
-std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_gpu(
+std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
     feedforward(x);  // Sets device and host activations
+
+    std::vector<double*> nabla_b(layers.size());
+    std::vector<double*> nabla_w(layers.size());
 
     // Allocate device memory for y
     double* d_y = nullptr;
@@ -291,6 +300,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         contextGPU_->set_to_zero(layer->get_d_delta_(), layer->get_num_neurons());
     }
 
+    //TODO: move Output layer: delta calc in a switch based on cost function(loss_type) type.
     // Output layer: delta = output - y (for both MSE and CE)
     auto output_layer = layers.back().get();
     double* d_cost_prime = nullptr;
@@ -308,11 +318,14 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
         break;
     };
     default:
-        //Throw some fucking error
+        throw std::runtime_error("Unsupported loss type");
         break;
     };
 
+    // Compute gradients for output layer
     output_layer->compute_gradients_gpu(d_cost_prime, apply_deriv);
+    nabla_w.back() = output_layer->get_d_weight_grads_();
+    nabla_b.back() = output_layer->get_d_delta_();
 
     // Free temporary device memory
     contextGPU_->free_vector(d_cost_prime);
@@ -330,22 +343,12 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
             next_layer->get_num_neurons(), next_layer->get_num_inputs());
 
         layer->compute_gradients_gpu(d_incoming_delta, true);  // Always apply derivative for hidden layers
+        nabla_w[l] = layer->get_d_weight_grads_();
+        nabla_b[l] = layer->get_d_delta_();
         contextGPU_->free_vector(d_incoming_delta);
     }
 
-    // Accumulate per-example gradients to batch accumulators
-    std::vector<double*> per_example_weight_grads;
-    std::vector<double*> per_example_deltas;
-
-    for (auto& layer : layers) {
-        per_example_weight_grads.push_back(layer->get_d_weight_grads_());
-        per_example_deltas.push_back(layer->get_d_delta_());
-    }
-
-    contextGPU_->accumulateGradientsGPU(per_example_weight_grads, per_example_deltas, accumulate_weight_grads, accumulate_bias_grads,
-        weight_rows, weight_cols, bias_sizes, 1.0);
-
-    return { {}, {} };  // Empty for GPU, as gradients are accumulated on device
+    return { nabla_b, nabla_w };  // Return device pointers
 }
 
 
@@ -353,7 +356,21 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
     if (is_gpu_context_) {
-        return backprop_gpu(x, y, n);
+        auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
+        // Convert device pointers to host for compatibility
+        std::vector<Eigen::VectorXd> host_nabla_b;
+        std::vector<Eigen::MatrixXd> host_nabla_w;
+        for (size_t i = 0; i < layers.size(); ++i) {
+            Eigen::VectorXd b = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
+            Eigen::MatrixXd w = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            contextGPU_->copy_to_host(b, nabla_b[i], layers[i]->get_num_neurons());
+            contextGPU_->copy_to_host(w, nabla_w[i], layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            host_nabla_b.push_back(b);
+            host_nabla_w.push_back(w);
+        }
+        freeDevicePointers(nabla_b);
+        freeDevicePointers(nabla_w);
+        return { host_nabla_b, host_nabla_w };
     }
     else {
         return backprop_cpu(x, y, n);

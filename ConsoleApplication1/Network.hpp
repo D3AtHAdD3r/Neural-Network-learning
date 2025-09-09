@@ -49,7 +49,7 @@ public:
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
     // GPU-specific backprop (accumulates gradients directly on device; returns empty for compatibility)
-    std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop_gpu(
+    std::pair<std::vector<double*>, std::vector<double*>> backprop_gpu(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
     // Wrapper to dispatch based on context
