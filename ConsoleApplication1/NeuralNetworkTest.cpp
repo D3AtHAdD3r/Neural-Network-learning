@@ -425,12 +425,6 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
     double eta = 0.1;
     double computed_norm = net.update_mini_batch(mini_batch, eta, n);
 
-    /*
-    If batch size = 1, than we dont need to call backprop, and accumulate gradients
-    because we already have expected gradients in expected_nabla_w and expected_nabla_b from getPrecomputedBackpropTestData();
-    So from here lets take two paths. 1- batch_size = 1, 2 - batch_size > 1.
-    */
-
     // Compute expected norm and updates
     double reg_scale = lambda * mini_batch.size() / n;
     double expected_norm = 0.0;
@@ -545,13 +539,18 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
         }
         else {
             for (size_t i = 0; i < net.get_num_layers() - 1; ++i) {
-                rows = net.get_layer_sizes()[i + 1];
-                cols = net.get_layer_sizes()[i];
+                //rows = net.get_layer_sizes()[i + 1];
+                //cols = net.get_layer_sizes()[i];
+
+                rows = layers[i]->get_num_neurons();
+                cols = layers[i]->get_num_inputs();
+
                 new_weights[i] = Eigen::MatrixXd::Zero(rows, cols);
                 new_biases[i] = Eigen::VectorXd::Zero(rows);
                 gpuContext->copy_weights_to_host(new_weights[i], layers[i]->get_d_weights(), rows, cols);
                 gpuContext->copy_biases_to_host(new_biases[i], layers[i]->get_d_biases(), rows);
             }
+
         }
 
         //compare with expected
@@ -568,28 +567,9 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
     passed_tests_++;
 }
 
-bool NeuralNetworkTest::testUpdateMiniBatch() {
-    std::vector<std::string> contexts = { /*"cpu",*/ "gpu" };
-    std::vector<std::string> losses = { "mse", "cross_entropy" };
-    std::vector<double> lambdas = { 0.0, 0.1 };
-    std::vector<int> batch_sizes = { 1, 4 };
-
-    for (const auto& context : contexts) {
-        for (const auto& loss : losses) {
-            for (double lambda : lambdas) {
-                for (int batch_size : batch_sizes) {
-                    runUpdateMiniBatchTests(context, loss, lambda, batch_size);
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
 bool NeuralNetworkTest::customtest(){
 
-    double lambda = 0.01;
+    double lambda = 0.0;
 
     // Create CPU and GPU networks with same seed and lambda>0
     Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
@@ -617,8 +597,43 @@ bool NeuralNetworkTest::customtest(){
 
     
     // Call update_mini_batch on both
-    double normcpu = net_cpu.update_mini_batch(mini_batch, eta, n);
+    //double normcpu = net_cpu.update_mini_batch(mini_batch, eta, n);
     double normgpu = net_gpu.update_mini_batch(mini_batch, eta, n);
+
+
+    //Debug
+    {
+        if (true) {
+            const auto& layers = net_gpu.get_layers();
+            int rows, cols;
+            for (size_t i = 0; i < net_gpu.get_num_layers() - 1; ++i) {
+                rows = net_gpu.get_layer_sizes()[i + 1];
+                cols = net_gpu.get_layer_sizes()[i];
+                gpuContext->debugPrint(layers[i]->get_d_weights(), rows * cols);
+                displayMatrixXd(layers[i]->get_weights());
+            }
+        }
+
+    }
+
+    return true;
+}
+
+bool NeuralNetworkTest::testUpdateMiniBatch() {
+    std::vector<std::string> contexts = { "cpu", "gpu" };
+    std::vector<std::string> losses = { "mse", "cross_entropy" };
+    std::vector<double> lambdas = { 0.0, 0.1 };
+    std::vector<int> batch_sizes = { 1, 4 };
+
+    for (const auto& context : contexts) {
+        for (const auto& loss : losses) {
+            for (double lambda : lambdas) {
+                for (int batch_size : batch_sizes) {
+                    runUpdateMiniBatchTests(context, loss, lambda, batch_size);
+                }
+            }
+        }
+    }
 
     return true;
 }

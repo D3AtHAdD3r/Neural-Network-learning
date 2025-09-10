@@ -52,18 +52,26 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
         for (size_t i = 0; i < sizes.size() - 1; ++i) {
             double* weightGrad_currentLayer = nullptr;
             double* biasGrad_currentLayer = nullptr;
+            double* temp_weightGrad = nullptr;
+            double* temp_biasGrad = nullptr;
 
             contextGPU_->allocate_weights(&weightGrad_currentLayer, layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
             contextGPU_->allocate_biases(&biasGrad_currentLayer, layers[i]->get_num_neurons());
+            contextGPU_->allocate_weights(&temp_weightGrad, layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            contextGPU_->allocate_biases(&temp_biasGrad, layers[i]->get_num_neurons());
 
             Eigen::MatrixXd zeroMatrix = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
             Eigen::VectorXd zeroVec = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
 
             contextGPU_->copy_to_device(weightGrad_currentLayer, zeroMatrix);
             contextGPU_->copy_to_device(biasGrad_currentLayer, zeroVec);
+            contextGPU_->copy_to_device(temp_weightGrad, zeroMatrix);
+            contextGPU_->copy_to_device(temp_biasGrad, zeroVec);
 
             accumulate_weight_grads.push_back(weightGrad_currentLayer);
             accumulate_bias_grads.push_back(biasGrad_currentLayer);
+            temp_weight_grads.push_back(temp_weightGrad);
+            temp_bias_grads.push_back(temp_biasGrad);
 
             weight_rows.push_back(layers[i]->get_num_neurons());
             weight_cols.push_back(layers[i]->get_num_inputs());
@@ -79,6 +87,12 @@ Network::~Network() {
             contextGPU_->free_weights(ptr);
         }
         for (auto ptr : accumulate_bias_grads) {
+            contextGPU_->free_biases(ptr);
+        }
+        for (auto ptr : temp_weight_grads) {
+            contextGPU_->free_weights(ptr);
+        }
+        for (auto ptr : temp_bias_grads) {
             contextGPU_->free_biases(ptr);
         }
     }
@@ -179,6 +193,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         for (const auto& [x, y] : mini_batch) {
             auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
             contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
+
         }
 
         // Add L2 regularization
@@ -192,14 +207,14 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         // Update parameters
         double update_scale = eta / mini_batch.size();
         for (size_t i = 0; i < layers.size(); ++i) {
-            layers[i]->update_parameters(accumulate_weight_grads[i], accumulate_bias_grads[i], update_scale);
+            layers[i]->update_parameters_gpu(accumulate_weight_grads[i], accumulate_bias_grads[i], temp_weight_grads[i], temp_bias_grads[i], update_scale);
         }
 
         // Compute gradient norm
         norm = contextGPU_->compute_gradient_norm_gpu(accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
     }
     else {
-        // CPU path (unchanged for brevity, but gradient norm updated)
+        // CPU path 
         std::vector<Eigen::MatrixXd> weight_grads(layers.size());
         std::vector<Eigen::VectorXd> bias_grads(layers.size());
 
@@ -223,7 +238,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
         double update_scale = eta / mini_batch.size();
         for (size_t i = 0; i < layers.size(); ++i) {
-            layers[i]->update_parameters(weight_grads[i], bias_grads[i], update_scale);
+            layers[i]->update_parameters_cpu(weight_grads[i], bias_grads[i], update_scale);
         }
 
         double total_sq_norm = 0.0;

@@ -25,6 +25,18 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
     d_weight_grads_(nullptr), d_delta_(nullptr), d_temp_(nullptr),
     is_gpu_context_(dynamic_cast<GPUComputationContext*>(context_) != nullptr){
 
+    // Xavier initialization
+    double stddev = std::sqrt(2.0 / (num_inputs + 1));
+    std::normal_distribution<double> dist(0.0, stddev);
+
+    // Initialize weights and biases 
+    for (int i = 0; i < num_neurons; ++i) {
+        for (int j = 0; j < num_inputs; ++j) {
+            weights_(i, j) = dist(rng_);
+        }
+        biases_(i) = dist(rng_);
+    }
+
     if (is_gpu_context_) {
         contextGPU_ = dynamic_cast<GPUComputationContext*>(context_);
         // Allocate GPU memory
@@ -52,17 +64,7 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
         contextCPU_ = dynamic_cast<CPUComputationContext*>(context_);
     }
 
-    // Xavier initialization
-    double stddev = std::sqrt(2.0 / (num_inputs + 1));
-    std::normal_distribution<double> dist(0.0, stddev);
-
-    // Initialize weights and biases (unchanged)
-    for (int i = 0; i < num_neurons; ++i) {
-        for (int j = 0; j < num_inputs; ++j) {
-            weights_(i, j) = dist(rng_);
-        }
-        biases_(i) = dist(rng_);
-    }
+    
 }
 
 /**
@@ -165,7 +167,7 @@ void Layer::compute_gradients_gpu(double* d_incoming_deltas, bool apply_derivati
 
 
 //CPU variant
-void Layer::update_parameters(
+void Layer::update_parameters_cpu(
     const Eigen::MatrixXd& weight_grads,
     const Eigen::VectorXd& bias_grads,
     double scale) {
@@ -173,14 +175,17 @@ void Layer::update_parameters(
 }
 
 //GPU variant
-void Layer::update_parameters(
-    double* accumulate_weight_grads,
-    double* accumulate_bias_grads,
+void Layer::update_parameters_gpu(
+    const double* accumulate_weight_grads,
+    const double* accumulate_bias_grads,
+    double* d_temp_weight_grads, 
+    double* d_temp_bias_grads,
     double scale) {
 
     contextGPU_->updateParametersGPU(
         d_weights_, d_biases_,
         accumulate_weight_grads, accumulate_bias_grads,
+        d_temp_weight_grads, d_temp_bias_grads,
         num_neurons_, num_inputs_, num_neurons_, scale
     );
 

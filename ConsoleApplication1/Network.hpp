@@ -118,7 +118,8 @@ private:
     CPUComputationContext* contextCPU_ = nullptr;
     bool owns_context_;                             // Flag to track ownership
     bool is_gpu_context_;                           // New: Cached flag for quick dispatch
-
+    std::vector<double*> temp_weight_grads;         // Temporary buffers for scaled gradients
+    std::vector<double*> temp_bias_grads;          // Temporary buffers for scaled gradients
 private:
     //GPU storage pointers
     std::vector<double*> accumulate_weight_grads;

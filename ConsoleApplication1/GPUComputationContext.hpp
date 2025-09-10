@@ -78,12 +78,13 @@ public:
         int num_inputs,
         bool apply_derivative);
 
-    // Update parameters (on host for now; optimize later)
     void updateParametersGPU(
         double* d_weights,
         double* d_biases,
-        double* weight_grads,
-        double* bias_grads,
+        const double* weight_grads,
+        const double* bias_grads,
+        double* d_temp_weight_grads, 
+        double* d_temp_bias_grads,
         int m, int n, int bias_size, double scale);
 
     void accumulateGradientsGPU(

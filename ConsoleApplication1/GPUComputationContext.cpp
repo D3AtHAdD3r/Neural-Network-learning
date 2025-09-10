@@ -114,8 +114,9 @@ double GPUComputationContext::compute_gradient_norm_gpu(
     const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
     const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size) {
     double total_sq_norm = 0.0;
-    double temp_norm;
+    double temp_norm = 0.0;
     for (size_t i = 0; i < weight_grads.size(); ++i) {
+        //temp_norm = 0.0;
         CHECK_CUBLAS(cublasDnrm2(cublasHandle, w_rows[i] * w_cols[i], weight_grads[i], 1, &temp_norm));
         total_sq_norm += temp_norm * temp_norm;
         CHECK_CUBLAS(cublasDnrm2(cublasHandle, b_sizes[i], bias_grads[i], 1, &temp_norm));
@@ -410,19 +411,24 @@ void GPUComputationContext::computeGradientsGPU(
 
 void GPUComputationContext::updateParametersGPU(double* d_weights,
     double* d_biases,
-    double* d_weight_grads,
-    double* d_bias_grads,
+    const double* d_weight_grads,
+    const double* d_bias_grads,
+    double* d_temp_weight_grads, double* d_temp_bias_grads,
     int m, int n, int bias_size, double scale) {
 
-    
-    // Scale gradients: weight_grads *= scale, bias_grads *= scale
-    CHECK_CUBLAS(cublasDscal(cublasHandle, m * n, &scale, d_weight_grads, 1));
-    CHECK_CUBLAS(cublasDscal(cublasHandle, bias_size, &scale, d_bias_grads, 1));
+    // Copy gradients to temporary buffers
+    CHECK_CUBLAS(cublasDcopy(cublasHandle, m * n, d_weight_grads, 1, d_temp_weight_grads, 1));
+    CHECK_CUBLAS(cublasDcopy(cublasHandle, bias_size, d_bias_grads, 1, d_temp_bias_grads, 1));
 
-    // Update parameters: weights -= weight_grads, biases -= bias_grads
+    // Scale temporary gradients: temp_grads *= scale
+    CHECK_CUBLAS(cublasDscal(cublasHandle, m * n, &scale, d_temp_weight_grads, 1));
+    CHECK_CUBLAS(cublasDscal(cublasHandle, bias_size, &scale, d_temp_bias_grads, 1));
+
+    // Update parameters: weights -= temp_weight_grads, biases -= temp_bias_grads
     double alpha = -1.0;
-    CHECK_CUBLAS(cublasDaxpy(cublasHandle, m * n, &alpha, d_weight_grads, 1, d_weights, 1));
-    CHECK_CUBLAS(cublasDaxpy(cublasHandle, bias_size, &alpha, d_bias_grads, 1, d_biases, 1));
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, m * n, &alpha, d_temp_weight_grads, 1, d_weights, 1));
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, bias_size, &alpha, d_temp_bias_grads, 1, d_biases, 1));
+   
 }
 
 

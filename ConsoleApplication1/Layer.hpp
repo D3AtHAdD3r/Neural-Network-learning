@@ -76,7 +76,7 @@ public:
 	/**
 	 * @brief Updates weights and biases using pre-computed gradients (CPU).
 	 */
-	void update_parameters(
+	void update_parameters_cpu(
 		const Eigen::MatrixXd& weight_grads,
 		const Eigen::VectorXd& bias_grads, 
 		double scale = 1.0);
@@ -84,9 +84,10 @@ public:
 	/**
 	 * @brief Updates weights and biases using device gradients (GPU).
 	 */
-	void update_parameters(
-		double* accumulate_weight_grads,
-		double* accumulate_bias_grads,
+	void update_parameters_gpu(
+		const double* accumulate_weight_grads,
+		const double* accumulate_bias_grads,
+		double* d_temp_weight_grads, double* d_temp_bias_grads,
 		double scale = 1.0);
 
 	/**
