@@ -57,14 +57,14 @@ int main() {
     std::string test_images = "data/t10k-images-idx3-ubyte";
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
-    auto training_data = load_mnist_training(train_images, train_labels, 5000);
-    auto test_data = load_mnist_test(test_images, test_labels, 3000);
+    auto training_data = load_mnist_training(train_images, train_labels, 65000);
+    auto test_data = load_mnist_test(test_images, test_labels, 10000);
 
     CPUComputationContext cpuContext;
     GPUComputationContext gpuContext;
 
-    double l2strength = 0.000;
-    Network::LossType loss = Network::LossType::MSE;
+    double l2strength = 0.001;
+    Network::LossType loss = Network::LossType::CROSS_ENTROPY;
     Network::NeuronType neuron = Network::NeuronType::SIGMOID;
 
     Network netCPU(sizes, l2strength, loss, neuron, &cpuContext);
@@ -75,15 +75,15 @@ int main() {
     double eta = 1.5;
 
     // Display network parameters
-    printNetworkParams("CPU", sizes, l2strength, loss, neuron);
+    //printNetworkParams("CPU", sizes, l2strength, loss, neuron);
     printNetworkParams("GPU", sizes, l2strength, loss, neuron);
 
-    std::cout << "Training with Cpu context...\n";
+    /*std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
     netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
-    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
+    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";*/
 
     std::cout << "Training with Gpu context...\n";
     auto gpu_start = std::chrono::high_resolution_clock::now();
