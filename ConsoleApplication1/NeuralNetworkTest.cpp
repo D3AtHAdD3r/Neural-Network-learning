@@ -602,7 +602,7 @@ bool NeuralNetworkTest::runAllTests()
     
     //tests
     testNetworkBackprop();
-    //testUpdateMiniBatch();
+    testUpdateMiniBatch();
     //customtest();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;

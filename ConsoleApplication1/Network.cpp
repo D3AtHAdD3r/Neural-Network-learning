@@ -398,7 +398,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
  * @brief Evaluates the network on test data and computes loss.
  * @param test_data Vector of (input, label) pairs
  * @param n Number of training examples for L2 regularization scaling
- * @return Pair of (correct predictions, total MSE loss including regularization)
+ * @return Pair of (correct predictions, total loss including regularization)
  */
 std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n) {
     int correct = 0;
@@ -558,56 +558,6 @@ Eigen::VectorXd Network::cost_derivative(const Eigen::VectorXd& output_activatio
     throw std::runtime_error("Unsupported neuron type or loss function combination");
 }
 
-/**
- * @brief Computes the mean squared error loss over test data.
- * @param test_data Vector of (input, label) pairs
- * @return Average MSE loss
- */
-//double Network::compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data)
-//{
-//    double total_loss = 0.0;
-//    for (const auto& [x, y] : test_data) {
-//        Eigen::VectorXd output = feedforward(x);
-//        Eigen::VectorXd target = Eigen::VectorXd::Zero(output.size());
-//        target(y) = 1.0; // One-hot encoding for target label
-//        Eigen::VectorXd diff = output - target;
-//        total_loss += diff.squaredNorm();
-//    }
-//    return total_loss / test_data.size();
-//
-//}
-
-
-/**
- * @brief Computes the L2 norm of gradients for a mini-batch.
- * @param mini_batch Vector of (input, target) pairs
- * @param n Number of training examples for L2 regularization scaling
- * @return L2 norm of gradients
- */
-//double Network::compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n)
-//{
-//    std::vector<Eigen::MatrixXd> weight_grads;
-//    std::vector<Eigen::VectorXd> bias_grads;
-//    for (size_t i = 0; i < layers.size(); ++i) {
-//        weight_grads.emplace_back(Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs()));
-//        bias_grads.emplace_back(Eigen::VectorXd::Zero(layers[i]->get_num_neurons()));
-//    }
-//
-//    for (const auto& [x, y] : mini_batch) {
-//        auto [delta_nabla_b, delta_nabla_w] = backprop(x, y, n);
-//        for (size_t i = 0; i < layers.size(); ++i) {
-//            bias_grads[i] += delta_nabla_b[i];
-//            weight_grads[i] += delta_nabla_w[i];
-//        }
-//    }
-//
-//    double norm = 0.0;
-//    for (size_t i = 0; i < layers.size(); ++i) {
-//        norm += bias_grads[i].squaredNorm();
-//        norm += weight_grads[i].squaredNorm();
-//    }
-//    return std::sqrt(norm / mini_batch.size());
-//}
 
 /**
  * @brief Displays biases for all layers.
