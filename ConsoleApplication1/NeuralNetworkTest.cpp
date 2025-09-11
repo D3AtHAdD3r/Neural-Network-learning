@@ -189,6 +189,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
+        net_cpu.feedforward(x); // Compute and cache activations for all layers
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
         assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
         assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
@@ -217,6 +218,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
+        net_cpu.feedforward(x); // Compute and cache activations for all layers
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
         assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
         assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
@@ -245,6 +247,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
+        net_gpu.feedforward(x); // Compute and cache activations for all layers
         net_gpu.backprop_gpu(x, y, 1);
         const auto& layers = net_gpu.get_layers();
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
@@ -283,6 +286,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
+        net_gpu.feedforward(x); // Compute and cache activations for all layers
         net_gpu.backprop_gpu(x, y, 1);
         const auto& layers = net_gpu.get_layers();
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
@@ -323,6 +327,9 @@ bool NeuralNetworkTest::testNetworkBackprop() {
 
         Eigen::VectorXd x = training_data[0].first;
         Eigen::VectorXd y = training_data[0].second;
+
+        net_cpu.feedforward(x); // Compute and cache activations for all layers
+        net_gpu.feedforward(x); // Compute and cache activations for all layers
 
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, training_data.size());
         net_gpu.backprop_gpu(x, y, training_data.size());
@@ -499,6 +506,7 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
             neuron_type_, static_cast<ComputationContext*>(cpuContext.get()), seed_);
 
         for (const auto& [x, y] : mini_batch) {
+            net_temp.feedforward(x); // Compute and cache activations for all layers
             auto [nabla_b, nabla_w] = net_temp.backprop_cpu(x, y, n);
             for (size_t i = 0; i < nabla_w.size(); ++i) {
                 sum_nabla_w[i] += nabla_w[i];
@@ -567,7 +575,43 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
     passed_tests_++;
 }
 
-bool NeuralNetworkTest::customtest(){
+bool NeuralNetworkTest::testUpdateMiniBatch() {
+    std::vector<std::string> contexts = { "cpu", "gpu" };
+    std::vector<std::string> losses = { "mse", "cross_entropy" };
+    std::vector<double> lambdas = { 0.0, 0.1 };
+    std::vector<int> batch_sizes = { 1, 4 };
+
+    for (const auto& context : contexts) {
+        for (const auto& loss : losses) {
+            for (double lambda : lambdas) {
+                for (int batch_size : batch_sizes) {
+                    runUpdateMiniBatchTests(context, loss, lambda, batch_size);
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+
+bool NeuralNetworkTest::runAllTests()
+{
+    passed_tests_ = 0;
+    total_tests_ = 0;
+    
+    //tests
+    testNetworkBackprop();
+    //testUpdateMiniBatch();
+    //customtest();
+
+    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
+    return passed_tests_ == total_tests_;
+}
+
+
+
+bool NeuralNetworkTest::customtest() {
 
     double lambda = 0.0;
 
@@ -595,7 +639,7 @@ bool NeuralNetworkTest::customtest(){
     double eta = 0.1;
     size_t n = training_data.size();
 
-    
+
     // Call update_mini_batch on both
     //double normcpu = net_cpu.update_mini_batch(mini_batch, eta, n);
     double normgpu = net_gpu.update_mini_batch(mini_batch, eta, n);
@@ -617,40 +661,6 @@ bool NeuralNetworkTest::customtest(){
     }
 
     return true;
-}
-
-bool NeuralNetworkTest::testUpdateMiniBatch() {
-    std::vector<std::string> contexts = { "cpu", "gpu" };
-    std::vector<std::string> losses = { "mse", "cross_entropy" };
-    std::vector<double> lambdas = { 0.0, 0.1 };
-    std::vector<int> batch_sizes = { 1, 4 };
-
-    for (const auto& context : contexts) {
-        for (const auto& loss : losses) {
-            for (double lambda : lambdas) {
-                for (int batch_size : batch_sizes) {
-                    runUpdateMiniBatchTests(context, loss, lambda, batch_size);
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
-
-bool NeuralNetworkTest::runAllTests()
-{
-    passed_tests_ = 0;
-    total_tests_ = 0;
-    
-    //tests
-    //testNetworkBackprop();
-    testUpdateMiniBatch();
-    //customtest();
-
-    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
-    return passed_tests_ == total_tests_;
 }
 
 

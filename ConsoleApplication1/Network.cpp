@@ -191,6 +191,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
         // Accumulate gradients over mini-batch
         for (const auto& [x, y] : mini_batch) {
+            feedforward(x);  // Sets device and host activations
             auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
             contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
 
@@ -224,6 +225,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         }
 
         for (const auto& [x, y] : mini_batch) {
+            feedforward(x);  // Compute and cache activations for all layers
             auto [nabla_b, nabla_w] = backprop_cpu(x, y, n);
             contextCPU_->accumulateGradientsCPU(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
         }
@@ -256,7 +258,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_cpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
-    feedforward(x);  // Compute and cache activations for all layers
+    //feedforward(x);  // Compute and cache activations for all layers
 
     std::vector<Eigen::VectorXd> nabla_b(layers.size());
     std::vector<Eigen::MatrixXd> nabla_w(layers.size());
@@ -299,7 +301,7 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
-    feedforward(x);  // Sets device and host activations
+    //feedforward(x);  // Sets device and host activations
 
     std::vector<double*> nabla_b(layers.size());
     std::vector<double*> nabla_w(layers.size());
