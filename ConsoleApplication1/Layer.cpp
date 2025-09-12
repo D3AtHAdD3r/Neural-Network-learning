@@ -80,6 +80,7 @@ const double* Layer::forward_gpu(const double* input) {
         throw std::runtime_error("Unsupported computation context type");
     }
 
+    //cache the input
     contextGPU_->copy_device_to_device(d_input_, input, num_inputs_);
 
     contextGPU_->computeLinearGPU(d_weights_, input, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);

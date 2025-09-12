@@ -282,8 +282,6 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_cpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
-    //feedforward(x);  // Compute and cache activations for all layers
-
     std::vector<Eigen::VectorXd> nabla_b(layers.size());
     std::vector<Eigen::MatrixXd> nabla_w(layers.size());
 
