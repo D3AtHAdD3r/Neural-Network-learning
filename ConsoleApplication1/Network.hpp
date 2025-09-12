@@ -36,7 +36,9 @@ public:
     ~Network(); 
 
 public:
-    Eigen::VectorXd feedforward(const Eigen::VectorXd& a);
+    //Eigen::VectorXd feedforward(const Eigen::VectorXd& a);
+    Eigen::VectorXd feedforward_cpu(const Eigen::VectorXd& a);
+    Eigen::VectorXd feedforward_gpu(const Eigen::VectorXd& a);
 
     void SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         int epochs, int mini_batch_size, double eta,
@@ -52,10 +54,6 @@ public:
     std::pair<std::vector<double*>, std::vector<double*>> backprop_gpu(
         const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
 
-    // Wrapper to dispatch based on context
-    std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> backprop(
-        const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
-
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
 
@@ -65,8 +63,7 @@ public:
     void display_weights() const;
     void display_layer_biases(int max_elements = 10) const;
     void display_layer_weights(int max_elements = 10) const;
-    void display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n);
-
+  
 public:
     //setters
     void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);

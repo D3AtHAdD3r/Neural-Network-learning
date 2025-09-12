@@ -93,23 +93,53 @@ Layer::~Layer() {
  * @param input Input vector (num_inputs x 1)
  * @return Output activations (num_neurons x 1)
  */
-Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
-    input_ = input;
+//Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
+//    input_ = input;
+//    if (is_gpu_context_) {
+//        // GPU path
+//        contextGPU_->copy_to_device(d_input_, input_);
+//
+//        contextGPU_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
+//        contextGPU_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
+//
+//        contextGPU_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
+//        contextGPU_->copy_to_host(activations_, d_activations_, num_neurons_);
+//    }
+//    else {
+//        // CPU path
+//        pre_activations_ = contextCPU_->computeLinearCPU(weights_, input, biases_);
+//        activations_ = contextCPU_->applyActivationCPU(pre_activations_, activation_);
+//    }
+//    has_valid_activations_ = true;
+//    return activations_;
+//}
+
+const double* Layer::forward_gpu(const double* input) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    contextGPU_->copy_device_to_device(d_input_, input, num_inputs_);
+
+    contextGPU_->computeLinearGPU(d_weights_, input, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
+    contextGPU_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
+
+    contextGPU_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
+    contextGPU_->copy_to_host(activations_, d_activations_, num_neurons_);
+
+    has_valid_activations_ = true;
+    return d_activations_;
+}
+
+Eigen::VectorXd Layer::forward_cpu(const Eigen::VectorXd& input) {
     if (is_gpu_context_) {
-        // GPU path
-        contextGPU_->copy_to_device(d_input_, input_);
-
-        contextGPU_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
-        contextGPU_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
-
-        contextGPU_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
-        contextGPU_->copy_to_host(activations_, d_activations_, num_neurons_);
+        throw std::runtime_error("Unsupported computation context type");
     }
-    else {
-        // CPU path
-        pre_activations_ = contextCPU_->computeLinearCPU(weights_, input, biases_);
-        activations_ = contextCPU_->applyActivationCPU(pre_activations_, activation_);
-    }
+    input_ = input;
+
+    pre_activations_ = contextCPU_->computeLinearCPU(weights_, input, biases_);
+    activations_ = contextCPU_->applyActivationCPU(pre_activations_, activation_);
+
     has_valid_activations_ = true;
     return activations_;
 }
@@ -118,27 +148,14 @@ void Layer::compute_gradients_cpu(const Eigen::VectorXd& deltas,
     Eigen::MatrixXd& weight_grads,
     Eigen::VectorXd& bias_grads, bool apply_derivative) const {
 
-        {
-           /* Eigen::VectorXd adjusted_deltas = deltas;
-            if (apply_derivative) {
-                Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivative(activations_, pre_activations_, activation_);
-                adjusted_deltas = deltas.cwiseProduct(activation_derives);
-            }
-            weight_grads = adjusted_deltas * input_.transpose();
-            bias_grads = adjusted_deltas;*/
-        }
-
-        //or
-        {
-            if (apply_derivative) {
-                Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivativeCPU(activations_, pre_activations_, activation_);
-                contextCPU_->computeGradientsCPU(deltas, activation_derives, input_, weight_grads, bias_grads, apply_derivative);
-            }
-            else {
-                Eigen::VectorXd activation_derives = Eigen::VectorXd::Ones(activations_.size());
-                contextCPU_->computeGradientsCPU(deltas, activation_derives, input_, weight_grads, bias_grads, apply_derivative);
-            }
-        }
+    if (apply_derivative) {
+        Eigen::VectorXd activation_derives = contextCPU_->computeActivationDerivativeCPU(activations_, pre_activations_, activation_);
+        contextCPU_->computeGradientsCPU(deltas, activation_derives, input_, weight_grads, bias_grads, apply_derivative);
+    }
+    else {
+        Eigen::VectorXd activation_derives = Eigen::VectorXd::Ones(activations_.size());
+        contextCPU_->computeGradientsCPU(deltas, activation_derives, input_, weight_grads, bias_grads, apply_derivative);
+    }
 }
 
 void Layer::compute_gradients_gpu(double* d_incoming_deltas, bool apply_derivative) {

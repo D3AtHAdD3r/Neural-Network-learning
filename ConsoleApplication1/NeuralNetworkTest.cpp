@@ -189,7 +189,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
-        net_cpu.feedforward(x); // Compute and cache activations for all layers
+        net_cpu.feedforward_cpu(x); // Compute and cache activations for all layers
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
         assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (MSE)", __FILE__, __LINE__);
         assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (MSE)", __FILE__, __LINE__);
@@ -218,7 +218,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_cpu.set_layer_biases(i, biases[i]);
         }
 
-        net_cpu.feedforward(x); // Compute and cache activations for all layers
+        net_cpu.feedforward_cpu(x); // Compute and cache activations for all layers
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, 1);
         assertVectorApprox(nabla_b_cpu[0], expected_nabla_b[0], TOL, "Hidden layer bias gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
         assertMatrixApprox(nabla_w_cpu[0], expected_nabla_w[0], TOL, "Hidden layer weight gradients mismatch (Cross-Entropy)", __FILE__, __LINE__);
@@ -247,7 +247,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
-        net_gpu.feedforward(x); // Compute and cache activations for all layers
+        net_gpu.feedforward_gpu(x); // Compute and cache activations for all layers
         net_gpu.backprop_gpu(x, y, 1);
         const auto& layers = net_gpu.get_layers();
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
@@ -286,7 +286,7 @@ bool NeuralNetworkTest::testNetworkBackprop() {
             net_gpu.set_layer_biases(i, biases[i]);
         }
 
-        net_gpu.feedforward(x); // Compute and cache activations for all layers
+        net_gpu.feedforward_gpu(x); // Compute and cache activations for all layers
         net_gpu.backprop_gpu(x, y, 1);
         const auto& layers = net_gpu.get_layers();
         Eigen::MatrixXd nabla_w0_gpu(3, 2);
@@ -328,8 +328,8 @@ bool NeuralNetworkTest::testNetworkBackprop() {
         Eigen::VectorXd x = training_data[0].first;
         Eigen::VectorXd y = training_data[0].second;
 
-        net_cpu.feedforward(x); // Compute and cache activations for all layers
-        net_gpu.feedforward(x); // Compute and cache activations for all layers
+        net_cpu.feedforward_cpu(x); // Compute and cache activations for all layers
+        net_gpu.feedforward_gpu(x); // Compute and cache activations for all layers
 
         auto [nabla_b_cpu, nabla_w_cpu] = net_cpu.backprop_cpu(x, y, training_data.size());
         net_gpu.backprop_gpu(x, y, training_data.size());
@@ -506,7 +506,7 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
             neuron_type_, static_cast<ComputationContext*>(cpuContext.get()), seed_);
 
         for (const auto& [x, y] : mini_batch) {
-            net_temp.feedforward(x); // Compute and cache activations for all layers
+            net_temp.feedforward_cpu(x); // Compute and cache activations for all layers
             auto [nabla_b, nabla_w] = net_temp.backprop_cpu(x, y, n);
             for (size_t i = 0; i < nabla_w.size(); ++i) {
                 sum_nabla_w[i] += nabla_w[i];

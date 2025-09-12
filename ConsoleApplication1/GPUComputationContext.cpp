@@ -294,8 +294,12 @@ void GPUComputationContext::copy_to_host(Eigen::MatrixXd& matrix, double* d_matr
     CHECK_CUDA(cudaMemcpy(matrix.data(), d_matrix, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
 }
 
+void GPUComputationContext::copy_device_to_device(double* dst, const double* src, int size) {
+    CHECK_CUDA(cudaMemcpy(dst, src, size * sizeof(double), cudaMemcpyDeviceToDevice));
+}
 
-void GPUComputationContext::computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n) {
+
+void GPUComputationContext::computeLinearGPU(const double* d_weights, const double* d_input, const double* d_biases, double* d_z, int m, int n) {
     double alpha = 1.0, beta = 0.0;
     CHECK_CUBLAS(cublasDgemv(cublasHandle, CUBLAS_OP_N, m, n, 
         &alpha, d_weights, m, d_input, 1, &beta, d_z, 1));

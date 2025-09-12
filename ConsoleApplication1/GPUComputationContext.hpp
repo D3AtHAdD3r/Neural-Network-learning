@@ -55,7 +55,7 @@ public:
 public:
 
     // Compute linear transformation on GPU: weights * input + biases
-    void computeLinearGPU(double* d_weights, double* d_input, double* d_biases, double* d_z, int m, int n);
+    void computeLinearGPU(const double* d_weights,const double* d_input,const double* d_biases, double* d_z, int m, int n);
 
     // Apply activation function (assumes sigmoid for now using cuDNN)
     void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation);
@@ -129,6 +129,7 @@ public:
     void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size);
     void copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols);
     void set_to_zero(double* d_data, int n);
+    void copy_device_to_device(double* dst, const double* src, int size);
 
 public:
     void launch_elementwise_multiply(const double* a, const double* b, double* c, int n);

@@ -108,12 +108,50 @@ Network::~Network() {
  * @param a Input vector
  * @return Output activations of the final layer
  */
-Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
+//Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
+//    Eigen::VectorXd activation = a;
+//    for (auto& layer : layers) {
+//        activation = layer->forward(activation);
+//    }
+//    return activation;
+//}
+
+Eigen::VectorXd Network::feedforward_cpu(const Eigen::VectorXd& a) {
+    if (is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
     Eigen::VectorXd activation = a;
     for (auto& layer : layers) {
-        activation = layer->forward(activation);
+        activation = layer->forward_cpu(activation);
     }
     return activation;
+}
+
+Eigen::VectorXd Network::feedforward_gpu(const Eigen::VectorXd& a) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+    //copy input (of first layer) to device
+    double* input_d = nullptr;
+    const double* activation = nullptr;
+
+    int s = a.size();
+
+    contextGPU_->allocate_vector(&input_d, a.size());
+    contextGPU_->copy_to_device(input_d, a);
+
+    activation = input_d;
+
+    for (auto& layer : layers) {
+        activation = layer->forward_gpu(activation);
+    }
+
+    contextGPU_->free_vector(input_d);
+
+    //Last layers activations are already cached in layer.last
+    Eigen::VectorXd output = layers.back()->get_activations();
+    return output;
 }
 
 /**
@@ -191,7 +229,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
 
         // Accumulate gradients over mini-batch
         for (const auto& [x, y] : mini_batch) {
-            feedforward(x);  // Sets device and host activations
+            feedforward_gpu(x);  // Sets device and host activations
             auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
             contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
 
@@ -225,7 +263,7 @@ double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, E
         }
 
         for (const auto& [x, y] : mini_batch) {
-            feedforward(x);  // Compute and cache activations for all layers
+            feedforward_cpu(x);  // Compute and cache activations for all layers
             auto [nabla_b, nabla_w] = backprop_cpu(x, y, n);
             contextCPU_->accumulateGradientsCPU(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
         }
@@ -263,18 +301,19 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
     std::vector<Eigen::VectorXd> nabla_b(layers.size());
     std::vector<Eigen::MatrixXd> nabla_w(layers.size());
 
-    // Output layer: compute delta = cost_derivative * (sigmoid' for MSE, 1 for CE)
-    Eigen::VectorXd activation = layers.back()->get_activations();
-    Eigen::VectorXd cost_prime = cost_derivative(activation, y);  // output - y
-
     bool apply_deriv;
-    switch (loss_type_) {
+    Eigen::VectorXd activation = layers.back()->get_activations();
+    Eigen::VectorXd cost_prime(activation.size());
+
+    switch (loss_type_) { // Output layer: compute delta = cost_derivative * (sigmoid' for MSE, 1 for CE)
     case LossType::MSE: {
         apply_deriv = true;
+        cost_prime = cost_derivative(activation, y);  // output - y
         break;
     };
     case LossType::CROSS_ENTROPY: {
         apply_deriv = false;
+        cost_prime = cost_derivative(activation, y);  // output - y
         break;
     };
     default:
@@ -301,8 +340,6 @@ std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::b
 std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
-    //feedforward(x);  // Sets device and host activations
-
     std::vector<double*> nabla_b(layers.size());
     std::vector<double*> nabla_w(layers.size());
 
@@ -317,21 +354,20 @@ std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
         contextGPU_->set_to_zero(layer->get_d_delta_(), layer->get_num_neurons());
     }
 
-    //TODO: move Output layer: delta calc in a switch based on cost function(loss_type) type.
-    // Output layer: delta = output - y (for both MSE and CE)
+    bool apply_deriv;
     auto output_layer = layers.back().get();
     double* d_cost_prime = nullptr;
     contextGPU_->allocate_vector(&d_cost_prime, output_layer->get_num_neurons());
-    contextGPU_->launch_elementwise_subtract(output_layer->get_d_activations_(), d_y, d_cost_prime, output_layer->get_num_neurons());
-
-    bool apply_deriv;
-    switch (loss_type_) {
+    
+    switch (loss_type_) { // Output layer: delta = output - y (for both MSE and CE)
     case LossType::MSE: {
         apply_deriv = true;
+        contextGPU_->launch_elementwise_subtract(output_layer->get_d_activations_(), d_y, d_cost_prime, output_layer->get_num_neurons());
         break;
     };
     case LossType::CROSS_ENTROPY: {
         apply_deriv = false;
+        contextGPU_->launch_elementwise_subtract(output_layer->get_d_activations_(), d_y, d_cost_prime, output_layer->get_num_neurons());
         break;
     };
     default:
@@ -368,32 +404,6 @@ std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
     return { nabla_b, nabla_w };  // Return device pointers
 }
 
-
-// Dispatcher
-std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop(
-    const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
-    if (is_gpu_context_) {
-        auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
-        // Convert device pointers to host for compatibility
-        std::vector<Eigen::VectorXd> host_nabla_b;
-        std::vector<Eigen::MatrixXd> host_nabla_w;
-        for (size_t i = 0; i < layers.size(); ++i) {
-            Eigen::VectorXd b = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
-            Eigen::MatrixXd w = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-            contextGPU_->copy_to_host(b, nabla_b[i], layers[i]->get_num_neurons());
-            contextGPU_->copy_to_host(w, nabla_w[i], layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-            host_nabla_b.push_back(b);
-            host_nabla_w.push_back(w);
-        }
-        freeDevicePointers(nabla_b);
-        freeDevicePointers(nabla_w);
-        return { host_nabla_b, host_nabla_w };
-    }
-    else {
-        return backprop_cpu(x, y, n);
-    }
-}
-
 /**
  * @brief Evaluates the network on test data and computes loss.
  * @param test_data Vector of (input, label) pairs
@@ -412,7 +422,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
 
         for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward(x);
+            Eigen::VectorXd output = feedforward_gpu(x);
 
             if (is_correct_prediction(output, y))
                 ++correct;
@@ -445,7 +455,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
 
         for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward(x);
+            Eigen::VectorXd output = feedforward_cpu(x);
 
             if (is_correct_prediction(output, y))
                 ++correct;
@@ -487,7 +497,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
 
         for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward(x);
+            Eigen::VectorXd output = feedforward_gpu(x);
 
             if (is_correct_prediction(output, y))
                 ++correct;
@@ -517,7 +527,7 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
         }
 
         for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward(x);
+            Eigen::VectorXd output = feedforward_cpu(x);
 
             if (is_correct_prediction(output, y))
                 ++correct;
@@ -641,54 +651,7 @@ void Network::display_layer_weights(int max_elements) const {
     }
 }
 
-/**
- * @brief Displays gradients computed by backpropagation for a single example.
- * @param x Input vector
- * @param y Target vector
- * @param n Number of training examples for L2 regularization scaling
- */
-void Network::display_backprop_gradients(const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
-    auto [nabla_b, nabla_w] = backprop(x, y, n);
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "=== Bias Gradients (from backprop) ===" << std::endl;
-    for (size_t i = 0; i < nabla_b.size(); ++i) {
-        std::string layer_name = (i == nabla_b.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << layer_name << " (" << nabla_b[i].size() << " bias gradients):" << std::endl;
-        for (int j = 0; j < nabla_b[i].size(); ++j) {
-            std::cout << "  db[" << j << "] = " << nabla_b[i](j);
-            if (j < nabla_b[i].size() - 1) std::cout << ",";
-            if (j == 9 && nabla_b[i].size() > 10) {
-                std::cout << " ... (truncated, total " << nabla_b[i].size() << " bias gradients)";
-                break;
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
-    }
 
-    std::cout << "=== Weight Gradients (from backprop) ===" << std::endl;
-    for (size_t i = 0; i < nabla_w.size(); ++i) {
-        std::string from_layer = (i == 0) ? "Input Layer" : "Hidden Layer " + std::to_string(i);
-        std::string to_layer = (i == nabla_w.size() - 1) ? "Output Layer" : "Hidden Layer " + std::to_string(i + 1);
-        std::cout << "From " << from_layer << " to " << to_layer
-            << " (" << nabla_w[i].rows() << "x" << nabla_w[i].cols() << " gradient matrix):" << std::endl;
-        int max_rows = std::min(static_cast<int>(nabla_w[i].rows()), 5);
-        int max_cols = std::min(static_cast<int>(nabla_w[i].cols()), 5);
-        for (int r = 0; r < max_rows; ++r) {
-            std::cout << "  [";
-            for (int c = 0; c < max_cols; ++c) {
-                std::cout << nabla_w[i](r, c);
-                if (c < max_cols - 1) std::cout << ", ";
-            }
-            if (max_cols < nabla_w[i].cols()) std::cout << ", ...";
-            std::cout << "]" << std::endl;
-        }
-        if (max_rows < nabla_w[i].rows() || max_cols < nabla_w[i].cols()) {
-            std::cout << "  (Truncated, full size: " << nabla_w[i].rows() << "x" << nabla_w[i].cols() << ")" << std::endl;
-        }
-        std::cout << std::endl;
-    }
-}
 
 /**
  * @brief Sets the weights of a specific layer.

@@ -64,7 +64,7 @@ int main() {
     GPUComputationContext gpuContext;
 
     double l2strength = 0.001;
-    Network::LossType loss = Network::LossType::MSE;
+    Network::LossType loss = Network::LossType::CROSS_ENTROPY;
     Network::NeuronType neuron = Network::NeuronType::SIGMOID;
 
     Network netCPU(sizes, l2strength, loss, neuron, &cpuContext);
@@ -97,7 +97,7 @@ int main() {
 
 
 
-int main555() {
+int main76777() {
 
     // Default parameters
     NeuralNetworkTest tester;

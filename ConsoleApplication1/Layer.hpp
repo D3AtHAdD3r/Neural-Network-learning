@@ -49,7 +49,10 @@ public:
 	 * @param input Input vector (num_inputs x 1)
 	 * @return Output activations (num_neurons x 1)
 	 */
-	Eigen::VectorXd forward(const Eigen::VectorXd& input);
+	//Eigen::VectorXd forward(const Eigen::VectorXd& input);
+
+	Eigen::VectorXd forward_cpu(const Eigen::VectorXd& input);
+	const double* forward_gpu(const double* input);
 
 	/**
 	 * @brief Computes gradients for weights and biases (CPU variant).
