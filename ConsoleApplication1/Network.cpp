@@ -77,6 +77,8 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
             weight_cols.push_back(layers[i]->get_num_inputs());
             bias_sizes.push_back(layers[i]->get_num_neurons());
         }
+
+        contextGPU_->allocate_vector(&d_input_main, sizes[0]);
     }
 
 }
@@ -95,6 +97,8 @@ Network::~Network() {
         for (auto ptr : temp_bias_grads) {
             contextGPU_->free_biases(ptr);
         }
+
+        contextGPU_->free_vector(d_input_main);
     }
 
     if (owns_context_ && context_) {
@@ -102,19 +106,6 @@ Network::~Network() {
     }
 }
 
-/**
- * @brief Computes the network output for a given input.
- * Passes the input through each layer's forward pass.
- * @param a Input vector
- * @return Output activations of the final layer
- */
-//Eigen::VectorXd Network::feedforward(const Eigen::VectorXd& a) {
-//    Eigen::VectorXd activation = a;
-//    for (auto& layer : layers) {
-//        activation = layer->forward(activation);
-//    }
-//    return activation;
-//}
 
 Eigen::VectorXd Network::feedforward_cpu(const Eigen::VectorXd& a) {
     if (is_gpu_context_) {
@@ -133,23 +124,18 @@ Eigen::VectorXd Network::feedforward_gpu(const Eigen::VectorXd& a) {
         throw std::runtime_error("Unsupported computation context type");
     }
     //copy input (of first layer) to device
-    double* input_d = nullptr;
     const double* activation = nullptr;
+    contextGPU_->set_to_zero(d_input_main, a.size());
+    contextGPU_->copy_to_device(d_input_main, a);
 
-    int s = a.size();
-
-    contextGPU_->allocate_vector(&input_d, a.size());
-    contextGPU_->copy_to_device(input_d, a);
-
-    activation = input_d;
+    activation = d_input_main;
 
     for (auto& layer : layers) {
         activation = layer->forward_gpu(activation);
     }
 
-    contextGPU_->free_vector(input_d);
-
-    //Last layers activations are already cached in layer.last
+    //Last layers activations are already cached in layer.last, 
+    //if Layer::forward_gpu() does not copies activations from device to host, copying from device-activations needs to be done.
     Eigen::VectorXd output = layers.back()->get_activations();
     return output;
 }

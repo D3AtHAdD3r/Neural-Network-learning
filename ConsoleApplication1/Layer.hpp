@@ -23,18 +23,8 @@ class CPUComputationContext;
 class Layer
 {
 public:
-	/**
-	 * @brief Constructs a layer with specified input size, number of neurons, and activation.
-	 * @param num_inputs Size of input vector
-	 * @param num_neurons Number of neurons in the layer
-	 * @param activation Activation function to use
-	 * @param seed Random seed for weight/bias initialization
-	 */
 	Layer(int num_inputs, int num_neurons, const Activation* activation, ComputationContext* context, unsigned int seed = 42);
 
-	/**
-	 * @brief Destructor to free GPU memory.
-	 */
 	~Layer();
 
 	//Delete copy and move operations
@@ -44,65 +34,31 @@ public:
 	Layer& operator=(Layer&&) = delete;
 
 public:
-	/**
-	 * @brief Computes the forward pass, producing activations for the input.
-	 * @param input Input vector (num_inputs x 1)
-	 * @return Output activations (num_neurons x 1)
-	 */
-	//Eigen::VectorXd forward(const Eigen::VectorXd& input);
-
 	Eigen::VectorXd forward_cpu(const Eigen::VectorXd& input);
 	const double* forward_gpu(const double* input);
 
-	/**
-	 * @brief Computes gradients for weights and biases (CPU variant).
-	 * @param deltas Error terms from the next layer or cost function
-	 * @param weight_grads Output weight gradients (num_neurons x num_inputs)
-	 * @param bias_grads Output bias gradients (num_neurons)
-	 */
 	void compute_gradients_cpu(
 		const Eigen::VectorXd& deltas,
 		Eigen::MatrixXd& weight_grads,
 		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;
 
-	/**
-	 * @brief Computes gradients for weights and biases (GPU variant; caches on device).
-	 * @param deltas Error terms (host; empty if already on device)
-	 */
 	void compute_gradients_gpu(double* d_deltas, bool apply_derivative = true);
 
-	// Wrapper to dispatch
-	/*void compute_gradients(const Eigen::VectorXd& deltas,
-		Eigen::MatrixXd& weight_grads,
-		Eigen::VectorXd& bias_grads, bool apply_derivative = true) const;*/
-
-	/**
-	 * @brief Updates weights and biases using pre-computed gradients (CPU).
-	 */
 	void update_parameters_cpu(
 		const Eigen::MatrixXd& weight_grads,
 		const Eigen::VectorXd& bias_grads, 
 		double scale = 1.0);
 
-	/**
-	 * @brief Updates weights and biases using device gradients (GPU).
-	 */
 	void update_parameters_gpu(
 		const double* accumulate_weight_grads,
 		const double* accumulate_bias_grads,
 		double* d_temp_weight_grads, double* d_temp_bias_grads,
 		double scale = 1.0);
 
-	/**
-	 * @brief Prints layer parameters (weights, biases, activations).
-	 * @param json_format If true, output in JSON-like format; else, text format
-	 * @return String representation of parameters
-	 */
 	std::string print_parameters(bool json_format = false) const;
 
 	// New GPU helper: Apply derivative elementwise on device
 	void apply_derivative_gpu(double* d_delta);
-
 
 public:
 	const Eigen::VectorXd& get_activations() const { return activations_; }

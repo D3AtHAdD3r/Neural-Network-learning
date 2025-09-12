@@ -576,6 +576,8 @@ void NeuralNetworkTest::runUpdateMiniBatchTests(const std::string& context, cons
 }
 
 bool NeuralNetworkTest::testUpdateMiniBatch() {
+    
+    std::cout << "-----Running Test : testUpdateMiniBatch-----" << std::endl;
     std::vector<std::string> contexts = { "cpu", "gpu" };
     std::vector<std::string> losses = { "mse", "cross_entropy" };
     std::vector<double> lambdas = { 0.0, 0.1 };
@@ -591,6 +593,7 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
         }
     }
 
+    std::cout << "-----Test: testUpdateMiniBatch Passed-----" << std::endl;
     return true;
 }
 

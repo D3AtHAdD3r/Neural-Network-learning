@@ -78,12 +78,12 @@ int main() {
     printNetworkParams("CPU", sizes, l2strength, loss, neuron);
     printNetworkParams("GPU", sizes, l2strength, loss, neuron);
 
-    std::cout << "Training with Cpu context...\n";
+    /*std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
     netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
-    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
+    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";*/
 
     std::cout << "Training with Gpu context...\n";
     auto gpu_start = std::chrono::high_resolution_clock::now();
@@ -97,7 +97,7 @@ int main() {
 
 
 
-int main76777() {
+int main7777() {
 
     // Default parameters
     NeuralNetworkTest tester;

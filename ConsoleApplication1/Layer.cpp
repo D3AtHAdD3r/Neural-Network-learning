@@ -6,14 +6,6 @@
 #include <iomanip>
 #include <cmath>
 
-
-/**
- * @brief Constructs a layer with specified input size and number of neurons.
- * Initializes weights and biases using Xavier initialization.
- * @param num_inputs Size of input vector
- * @param num_neurons Number of neurons in the layer
- * @param seed Random seed for initialization
- */
 Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, ComputationContext* context, unsigned int seed)
     : num_inputs_(num_inputs), num_neurons_(num_neurons),
     weights_(num_neurons, num_inputs), biases_(num_neurons),
@@ -67,9 +59,6 @@ Layer::Layer(int num_inputs, int num_neurons, const Activation* activation, Comp
     
 }
 
-/**
- * @brief Destructor to free GPU memory.
- */
 Layer::~Layer() {
 
     if (is_gpu_context_) {
@@ -85,34 +74,6 @@ Layer::~Layer() {
         contextGPU_->free_biases(d_temp_);
     }
 }
-
-
-/**
- * @brief Computes the forward pass, producing activations for the input.
- * Caches input and pre-activations for gradient computation.
- * @param input Input vector (num_inputs x 1)
- * @return Output activations (num_neurons x 1)
- */
-//Eigen::VectorXd Layer::forward(const Eigen::VectorXd& input) {
-//    input_ = input;
-//    if (is_gpu_context_) {
-//        // GPU path
-//        contextGPU_->copy_to_device(d_input_, input_);
-//
-//        contextGPU_->computeLinearGPU(d_weights_, d_input_, d_biases_, d_pre_activations_, num_neurons_, num_inputs_);
-//        contextGPU_->copy_to_host(pre_activations_, d_pre_activations_, num_neurons_); // For backprop compatibility
-//
-//        contextGPU_->applyActivationGPU(d_pre_activations_, d_activations_, num_neurons_, activation_);
-//        contextGPU_->copy_to_host(activations_, d_activations_, num_neurons_);
-//    }
-//    else {
-//        // CPU path
-//        pre_activations_ = contextCPU_->computeLinearCPU(weights_, input, biases_);
-//        activations_ = contextCPU_->applyActivationCPU(pre_activations_, activation_);
-//    }
-//    has_valid_activations_ = true;
-//    return activations_;
-//}
 
 const double* Layer::forward_gpu(const double* input) {
     if (!is_gpu_context_) {

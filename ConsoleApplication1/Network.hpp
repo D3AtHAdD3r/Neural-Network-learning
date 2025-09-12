@@ -83,10 +83,6 @@ public:
     const std::vector<int>& get_layer_sizes() const { return sizes; };
 private:
     Eigen::VectorXd cost_derivative(const Eigen::VectorXd& output_activations, const Eigen::VectorXd& y) const;
-private:
-    //unused/obsolete
-    //double compute_test_loss(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
-    //double compute_gradient_norm(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, size_t n);
 
 private:
     //Temporary helpers for cuda operations
@@ -115,8 +111,6 @@ private:
     CPUComputationContext* contextCPU_ = nullptr;
     bool owns_context_;                             // Flag to track ownership
     bool is_gpu_context_;                           // New: Cached flag for quick dispatch
-    std::vector<double*> temp_weight_grads;         // Temporary buffers for scaled gradients
-    std::vector<double*> temp_bias_grads;          // Temporary buffers for scaled gradients
 private:
     //GPU storage pointers
     std::vector<double*> accumulate_weight_grads;
@@ -125,6 +119,11 @@ private:
     std::vector<int> weight_rows;
     std::vector<int> weight_cols;
     std::vector<int> bias_sizes;
+    // Temporary buffers for scaled gradients
+    std::vector<double*> temp_weight_grads;         
+    std::vector<double*> temp_bias_grads;          
+    //Device Buffer for main input(layer1) 
+    double* d_input_main = nullptr;
 };
 
 #endif
