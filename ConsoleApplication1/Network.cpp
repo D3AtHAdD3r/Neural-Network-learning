@@ -338,6 +338,7 @@ std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
         contextGPU_->set_to_zero(layer->get_d_delta_(), layer->get_num_neurons());
     }
 
+    //TODO: make d_cost_prime class member(cache) and init it in constructor with output layer neuron size, free in destructor.
     bool apply_deriv;
     auto output_layer = layers.back().get();
     double* d_cost_prime = nullptr;

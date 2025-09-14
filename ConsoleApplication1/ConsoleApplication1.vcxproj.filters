@@ -87,4 +87,9 @@
       <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="pseudoCode.cpp">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>

@@ -57,7 +57,7 @@ int main() {
     std::string test_images = "data/t10k-images-idx3-ubyte";
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
-    auto training_data = load_mnist_training(train_images, train_labels, 5000);
+    auto training_data = load_mnist_training(train_images, train_labels, 7000);
     auto test_data = load_mnist_test(test_images, test_labels, 3000);
 
     CPUComputationContext cpuContext;

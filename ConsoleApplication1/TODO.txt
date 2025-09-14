@@ -1,68 +1,62 @@
-1.
-//TODO: dont use bias_grads to store temp deltas but create its own device storage
-void Layer::compute_gradients_gpu(const Eigen::VectorXd& deltas) {
-    // Compute derivative on device
-    contextGPU_->computeActivationDerivativeGPU(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, activation_);
+Design a small RAII wrapper for GPU vectors. example:
 
-    // If deltas is non-empty, copy to device; else assume it's already in bias_grads or similar
-    if (!deltas.isZero()) {
-        contextGPU_->copy_to_device(d_bias_grads_, deltas);  // Reuse bias_grads as temp delta
+#pragma once
+#include <cuda_runtime.h>
+#include <stdexcept>
+
+class GpuVector {
+public:
+    GpuVector(size_t size)
+        : size_(size), data_(nullptr) {
+        cudaError_t err = cudaMalloc(&data_, size_ * sizeof(double));
+        if (err != cudaSuccess) {
+            throw std::runtime_error("cudaMalloc failed: " + std::string(cudaGetErrorString(err)));
+        }
     }
 
-    contextGPU_->computeGradientsGPU(deltas, d_derivatives, d_input_,
-        d_weight_grads_, d_bias_grads_,
-        num_neurons_, num_inputs_);
-}
-
-//here too
-std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_gpu(...);
-
-2.
-TODO: Function doesnt need to return Eigen::VectorXd. 
-      no need to // Transfer result back to host
-Eigen::VectorXd GPUComputationContext::computeActivationDerivativeGPU(double* d_a, double* d_z, double* d_dy, double* d_derivatives, int size, const Activation* activation) {
-    if (!activation) {
-        throw std::runtime_error("Null activation pointer in computeActivationDerivative");
+    ~GpuVector() {
+        if (data_) {
+            cudaFree(data_);
+        }
     }
 
-    int n = size;
+    // Disable copy semantics
+    GpuVector(const GpuVector&) = delete;
+    GpuVector& operator=(const GpuVector&) = delete;
 
-    // Get cuDNN activation mode
-    cudnnActivationMode_t mode = activation->getCudnnActivationMode();
+    // Enable move semantics
+    GpuVector(GpuVector&& other) noexcept
+        : size_(other.size_), data_(other.data_) {
+        other.data_ = nullptr;
+        other.size_ = 0;
+    }
 
-    //TODO: can be moved to layer and implemented once after initializing d_dy?
-    // Initialize dy with ones (to compute raw derivative, not scaled by deltas)
-    std::vector<double> ones(n, 1.0);
-    CHECK_CUDA(cudaMemcpy(d_dy, ones.data(), n * sizeof(double), cudaMemcpyHostToDevice));
+    GpuVector& operator=(GpuVector&& other) noexcept {
+        if (this != &other) {
+            if (data_) cudaFree(data_);
+            data_ = other.data_;
+            size_ = other.size_;
+            other.data_ = nullptr;
+            other.size_ = 0;
+        }
+        return *this;
+    }
 
-    // Set up cuDNN descriptors
-    cudnnTensorDescriptor_t tensorDesc;
-    CHECK_CUDNN(cudnnCreateTensorDescriptor(&tensorDesc));
-    CHECK_CUDNN(cudnnSetTensor4dDescriptor(tensorDesc, CUDNN_TENSOR_NCHW,
-        CUDNN_DATA_DOUBLE, 1, 1, n, 1));
+    double* data() const { return data_; }
+    size_t size() const { return size_; }
 
-    cudnnActivationDescriptor_t activationDesc;
-    CHECK_CUDNN(cudnnCreateActivationDescriptor(&activationDesc));
-    CHECK_CUDNN(cudnnSetActivationDescriptor(activationDesc, mode,
-        CUDNN_NOT_PROPAGATE_NAN, 0.0));
+private:
+    size_t size_;
+    double* data_;
+};
 
-    // Compute derivatives using cuDNN
-    double alpha = 1.0, beta = 0.0;
+useage:
+GpuVector input_d(a.size());
+cudaMemcpy(input_d.data(), a.data(), a.size() * sizeof(double), cudaMemcpyHostToDevice);
 
-    CHECK_CUDNN(cudnnActivationBackward(cudnnHandle, activationDesc, &alpha, tensorDesc,
-        d_a, tensorDesc, d_dy, tensorDesc, d_z,
-        &beta, tensorDesc, d_derivatives));
+// Pass input_d.data() to your layers
 
-    // Transfer result back to host
-    Eigen::VectorXd derivatives(n);
-    CHECK_CUDA(cudaMemcpy(derivatives.data(), d_derivatives, n * sizeof(double), cudaMemcpyDeviceToHost));
-
-    // Clean up
-    CHECK_CUDNN(cudnnDestroyTensorDescriptor(tensorDesc));
-    CHECK_CUDNN(cudnnDestroyActivationDescriptor(activationDesc));
-
-    return derivatives;
-}
-
-
-
+You can extend this wrapper to include:
+copy_from_host(const Eigen::VectorXd&)      //not needed for simplicity
+copy_to_host(Eigen::VectorXd&)              //not needed for simplicity
+resize(size_t new_size) with reallocation   
