@@ -1,7 +1,5 @@
 #pragma once
 #include"Network.hpp"
-#include "CPUComputationContext.hpp"
-#include "GPUComputationContext.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <string>

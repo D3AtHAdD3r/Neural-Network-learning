@@ -4,13 +4,13 @@
 
 #include "Layer.hpp"
 #include "SigmoidActivation.hpp"
-#include "ComputationContext.hpp"
 #include <Eigen/Dense>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <iostream>
 #include <memory>  
+
 
 /**
  * @brief A feedforward neural network with sigmoid activation.
@@ -31,7 +31,8 @@ public:
         LossType loss_type = LossType::MSE, 
         NeuronType neuron_type = NeuronType::SIGMOID, 
         ComputationContext* context = nullptr, 
-        unsigned int seed = std::random_device{}());
+        unsigned int seed = std::random_device{}(), 
+        int max_batch_size = GPUComputationContext::MAX_BATCH_SIZE);
 
     ~Network(); 
 
@@ -124,6 +125,15 @@ private:
     std::vector<double*> temp_bias_grads;          
     //Device Buffer for main input(layer1) 
     double* d_input_main = nullptr;
+
+ private:
+    int max_batch_size_;
+    int allocated_batch_size_;                  // Actual size allocated for batch buffers
+    bool batch_buffers_allocated_ = false;      // Tracks if batch buffers are allocated
+    // Batch-related GPU buffers (centralized here for efficiency; avoids per-Layer allocation overhead)
+    double* d_batch_main_input = nullptr;       // GPU buffer for main batch input (input_size * allocated_batch_size_)
+    std::vector<double*> d_batch_pre_activations;  // Per-layer pre-activations (neurons * allocated_batch_size_)
+    std::vector<double*> d_batch_activations;      // Per-layer activations (neurons * allocated_batch_size_)
 };
 
 #endif

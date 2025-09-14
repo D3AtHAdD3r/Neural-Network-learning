@@ -1,7 +1,5 @@
 #include "Layer.hpp"
 #include"utils.h"
-#include"GPUComputationContext.hpp"
-#include"CPUComputationContext.hpp"
 #include <sstream>
 #include <iomanip>
 #include <cmath>

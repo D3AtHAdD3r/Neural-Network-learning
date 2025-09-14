@@ -8,10 +8,9 @@
 #include <random>
 #include "Activation.hpp"  
 #include "ComputationContext.hpp"
+#include"GPUComputationContext.hpp"
+#include"CPUComputationContext.hpp"
 
-// Forward declarations
-class GPUComputationContext;
-class CPUComputationContext;
 
 /**
  * @brief A neural network layer with sigmoid activation.

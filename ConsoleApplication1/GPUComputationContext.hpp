@@ -38,6 +38,10 @@ class GPUComputationContext : public ComputationContext {
 private:
     cublasHandle_t cublasHandle; // Handle for cuBLAS operations
     cudnnHandle_t cudnnHandle;   // Handle for cuDNN operations
+
+public:
+    static const int MAX_BATCH_SIZE = 128;  // Default max batch size for consumer GPUs; prevents out-of-memory errors
+
 public:
     // Constructor initializes cuBLAS and cuDNN handles
     GPUComputationContext() {
@@ -136,4 +140,21 @@ public:
     void launch_elementwise_subtract(const double* a, const double* b, double* c, int n);
     //debug
     void debugPrint(const double* data, int n);
+    
+public:
+    //Batch Processing funcs
+    
+    // Placeholder function to dynamically estimate max batch size based on GPU memory.
+    // Beginner note: GPUs have limited VRAM (video RAM). This queries the device's total memory
+    // and estimates how much we can use for batches (e.g., 10% of total mem for buffers).
+    // We divide by an estimate of buffer size per example (sizeof(double) * approx_network_size).
+    // For now, it's a simple calc; refine with actual network sizes later.
+    int get_dynamic_max_batch_size(int approx_network_size = 10000) const {
+        cudaDeviceProp prop;
+        CHECK_CUDA(cudaGetDeviceProperties(&prop, 0));  // Get properties of device 0 (default GPU)
+        size_t total_mem = prop.totalGlobalMem;  // Total GPU memory in bytes
+        size_t available_mem = total_mem * 0.1;  // Conservatively use 10% to avoid OOM
+        size_t mem_per_example = sizeof(double) * approx_network_size * 2;  // Rough estimate: inputs + outputs per layer
+        return static_cast<int>(available_mem / mem_per_example);
+    }
 };

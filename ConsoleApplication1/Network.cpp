@@ -1,8 +1,7 @@
 ﻿#include "Network.hpp"
-#include "CPUComputationContext.hpp"
-#include "GPUComputationContext.hpp"
 #include"utils.h"
 #include <iomanip>
+#include <numeric> 
 
 
 /**
@@ -10,13 +9,16 @@
  * Initializes layers with Xavier-initialized weights and biases.
  * @param sizes Vector of layer sizes (e.g., {784, 30, 10} for MNIST)
  */
-Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type, ComputationContext* context, unsigned int seed)
+Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_type, NeuronType neuron_type, ComputationContext* context, unsigned int seed, int max_batch_size)
     : 
     sizes(sizes), num_layers(sizes.size()), 
     rng(seed), last_test_loss(0.0), lambda(lambda), 
     loss_type_(loss_type), neuron_type_(neuron_type), 
     context_(context), owns_context_(context == nullptr), 
-    is_gpu_context_(dynamic_cast<GPUComputationContext*>(context_) != nullptr) {
+    is_gpu_context_(dynamic_cast<GPUComputationContext*>(context_) != nullptr), 
+    max_batch_size_(max_batch_size), 
+    allocated_batch_size_(0), 
+    batch_buffers_allocated_(false) {
 
     if (!context_) {
         context_ = new CPUComputationContext();
@@ -25,12 +27,20 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
 
     if (is_gpu_context_) {
         contextGPU_ = dynamic_cast<GPUComputationContext*>(context_);
+        // Optional: Override with dynamic estimate if user-set is 0 or default
+        // Beginner note: This allows auto-adjusting based on GPU hardware.
+        if (max_batch_size_ == GPUComputationContext::MAX_BATCH_SIZE) {
+            int approx_net_size = std::accumulate(sizes.begin(), sizes.end(), 0);  // Rough sum of all layer sizes
+            max_batch_size_ = contextGPU_->get_dynamic_max_batch_size(approx_net_size);
+            // Cap at default to be safe
+            max_batch_size_ = std::min(max_batch_size_, GPUComputationContext::MAX_BATCH_SIZE);
+        }
     }
     else {
         contextCPU_ = dynamic_cast<CPUComputationContext*>(context_);
     }
 
-    // Dynamically create activation based on neuron_type
+    // Initialize activation
     switch (neuron_type_) {
         case NeuronType::SIGMOID:
             activation_ = std::make_unique<SigmoidActivation>();
@@ -39,6 +49,7 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
             throw std::runtime_error("Unsupported neuron type");
     }
 
+    // Initialize layers
     for (size_t i = 1; i < sizes.size(); ++i) {
         layers.emplace_back(std::make_unique<Layer>(
             sizes[i - 1], sizes[i], activation_.get(), context_, static_cast<unsigned int>(rng())
@@ -47,7 +58,7 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
 
     //Initialize GPU storage pointers if gpu context
     if (is_gpu_context_) {
-      
+        
         //Initialize device memory pointers
         for (size_t i = 0; i < sizes.size() - 1; ++i) {
             double* weightGrad_currentLayer = nullptr;
@@ -79,6 +90,7 @@ Network::Network(const std::vector<int>& sizes, double lambda, LossType loss_typ
         }
 
         contextGPU_->allocate_vector(&d_input_main, sizes[0]);
+        contextGPU_->set_to_zero(d_input_main, sizes[0]);
     }
 
 }
@@ -99,6 +111,17 @@ Network::~Network() {
         }
 
         contextGPU_->free_vector(d_input_main);
+
+        // Free batch buffers if allocated
+        if (batch_buffers_allocated_) {
+            contextGPU_->free_vector(d_batch_main_input);
+            for (auto ptr : d_batch_pre_activations) {
+                contextGPU_->free_vector(ptr);
+            }
+            for (auto ptr : d_batch_activations) {
+                contextGPU_->free_vector(ptr);
+            }
+        }
     }
 
     if (owns_context_ && context_) {
@@ -156,6 +179,37 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     bool verbose) {
     size_t n = training_data.size();
     size_t n_test = test_data ? test_data->size() : 0;
+
+    // New: Allocate batch buffers on first SGD call
+    // mini_batch_size (capped at max_batch_size_). This avoids wasting memory for smaller batches.
+    if (is_gpu_context_ && !batch_buffers_allocated_) {
+        if (mini_batch_size > max_batch_size_) {
+            throw std::runtime_error("Mini-batch size (" + std::to_string(mini_batch_size) +
+                ") exceeds maximum allowed (" + std::to_string(max_batch_size_) + ")");
+        }
+
+        allocated_batch_size_ = mini_batch_size;  // Store actual size used
+        d_batch_pre_activations.resize(layers.size());
+        d_batch_activations.resize(layers.size());
+
+        // Allocate main input buffer
+        int input_size = sizes[0];
+        contextGPU_->allocate_vector(&d_batch_main_input, input_size * allocated_batch_size_);
+        contextGPU_->set_to_zero(d_batch_main_input, input_size * allocated_batch_size_);
+
+        // Allocate per-layer buffers
+        for (size_t i = 0; i < layers.size(); ++i) {
+            int layer_size = sizes[i + 1];  // Neurons in this layer
+            contextGPU_->allocate_vector(&d_batch_pre_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->allocate_vector(&d_batch_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->set_to_zero(d_batch_pre_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->set_to_zero(d_batch_activations[i], layer_size * allocated_batch_size_);
+        }
+
+        batch_buffers_allocated_ = true;  // Mark as allocated
+    }
+
+
     for (int j = 0; j < epochs; ++j) {
         std::shuffle(training_data.begin(), training_data.end(), rng);
         double batch_gradient_norm = 0.0;
