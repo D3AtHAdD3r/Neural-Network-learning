@@ -66,20 +66,12 @@ public:
     void display_layer_weights(int max_elements = 10) const;
   
 public:
-    //setters
     void set_layer_weights(size_t layer_idx, const Eigen::MatrixXd& weights);
     void set_layer_biases(size_t layer_idx, const Eigen::VectorXd& biases);
-    
-    //getters
     const std::vector<std::unique_ptr<Layer>>& get_layers() const { return layers; }
- 
-    //For unit tests(NeuralNetworkTest). 
-    std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; }
-
-    //helper to get per-layer d_grads
+    std::vector<std::unique_ptr<Layer>>& get_mutable_layers() { return layers; } //For unit tests(NeuralNetworkTest). 
     std::vector<double*> get_layer_d_weight_grads();
     std::vector<double*> get_layer_d_delta(); //d_delta = d_bias_grads
-
     int get_num_layers() { return num_layers; };
     const std::vector<int>& get_layer_sizes() const { return sizes; };
 private:

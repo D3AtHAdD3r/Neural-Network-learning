@@ -25,12 +25,17 @@ public:
 
     ~NeuralNetworkTest();
 public:
+    //non-Batched tests
     bool testNetworkBackprop();
+    void runUpdateMiniBatchTests(const std::string& context, const std::string& loss, double lambda, int batch_size);
     bool testUpdateMiniBatch();
-    bool customtest();
+public:
+    //Batched func tests
+    bool testBatchFunctionsGPU();
 public:
     bool runAllTests();
-
+public:
+    bool customtest();
 public:
     /**
      * @brief Generates an XOR-like dataset for testing.
@@ -84,8 +89,7 @@ private:
     void assertMatrixApprox(const Eigen::MatrixXd& a, const Eigen::MatrixXd& b, double tol, const std::string& message, const char* file, int line);
 
 private:
-    //
-    void runUpdateMiniBatchTests(const std::string& context, const std::string& loss, double lambda, int batch_size);
+    
 private:
     static constexpr double TOL = 1e-3; ///< Tolerance for floating-point comparisons
 private:

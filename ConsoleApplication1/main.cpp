@@ -50,7 +50,8 @@ void printNetworkParams(const std::string& label, const std::vector<int>& sizes,
     std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
 }
 
-int main() {
+int main555() {
+    std::cout << "-----------program started----------\n";
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
     std::string train_labels = "data/train-labels-idx1-ubyte";
@@ -97,7 +98,7 @@ int main() {
 
 
 
-int main7777() {
+int main() {
 
     // Default parameters
     NeuralNetworkTest tester;

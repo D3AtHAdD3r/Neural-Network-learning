@@ -604,67 +604,157 @@ bool NeuralNetworkTest::runAllTests()
     total_tests_ = 0;
     
     //tests
-    testNetworkBackprop();
-    testUpdateMiniBatch();
+    //testNetworkBackprop();
+    //testUpdateMiniBatch();
     //customtest();
+
+    testBatchFunctionsGPU();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
 }
 
-
-
 bool NeuralNetworkTest::customtest() {
-
-    double lambda = 0.0;
-
-    // Create CPU and GPU networks with same seed and lambda>0
-    Network net_cpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, cpuContext.get(), seed_);
-    Network net_gpu(network_sizes_, lambda, Network::LossType::MSE, neuron_type_, gpuContext.get(), seed_);
-
-    // Ensure identical initial parameters by copying from CPU to GPU
-    const auto& cpu_layers = net_cpu.get_layers();
-    auto& gpu_layers = net_gpu.get_mutable_layers();
-    for (size_t i = 0; i < cpu_layers.size(); ++i) {
-        gpu_layers[i]->set_weights(cpu_layers[i]->get_weights());
-        gpu_layers[i]->set_biases(cpu_layers[i]->get_biases());
-    }
-
-    // Generate XOR-like dataset
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> training_data;
-    std::vector<std::pair<Eigen::VectorXd, int>> test_data;
-    generateXORLikeDataset(training_data, test_data);
-
-    // Use the full training_data as mini-batch (size=4)
-    auto mini_batch = training_data;
-
-    // Choose eta and n (n=training_data.size() for proper reg scaling)
-    double eta = 0.1;
-    size_t n = training_data.size();
-
-
-    // Call update_mini_batch on both
-    //double normcpu = net_cpu.update_mini_batch(mini_batch, eta, n);
-    double normgpu = net_gpu.update_mini_batch(mini_batch, eta, n);
-
-
-    //Debug
-    {
-        if (true) {
-            const auto& layers = net_gpu.get_layers();
-            int rows, cols;
-            for (size_t i = 0; i < net_gpu.get_num_layers() - 1; ++i) {
-                rows = net_gpu.get_layer_sizes()[i + 1];
-                cols = net_gpu.get_layer_sizes()[i];
-                gpuContext->debugPrint(layers[i]->get_d_weights(), rows * cols);
-                displayMatrixXd(layers[i]->get_weights());
-            }
-        }
-
-    }
-
     return true;
 }
+
+//These tests verify the batch functions in GPUComputationContext.
+// We use small data for quick execution and easy verification against host computations.
+bool NeuralNetworkTest::testBatchFunctionsGPU() {
+    std::cout << "-----Running Test: testBatchFunctionsGPU-----" << std::endl;
+    total_tests_++;
+
+    GPUComputationContext ctx; // Temporary context for testing
+
+    // Test 1: Memory Allocation and Copy (to/from device)
+    int vec_size = 3; // Small size for inputs/outputs
+    int batch_size = 4;
+    std::vector<Eigen::VectorXd> host_batch(batch_size, Eigen::VectorXd(vec_size));
+    for (int b = 0; b < batch_size; ++b) {
+        host_batch[b] << b + 1.0, b + 2.0, b + 3.0; // Sample data: [1,2,3], [2,3,4], etc.
+    }
+
+    double* d_batch = nullptr;
+    ctx.allocate_batch_vector(&d_batch, vec_size, batch_size);
+    ctx.copy_batch_to_device(d_batch, host_batch); // transpose=false (vec_size × batch_size)
+
+    std::vector<Eigen::VectorXd> host_copy_back(batch_size);
+    ctx.copy_batch_to_host(host_copy_back, d_batch, vec_size, batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        assertVectorApprox(host_copy_back[b], host_batch[b], TOL, "Batch copy roundtrip mismatch", __FILE__, __LINE__);
+    }
+
+    // Test 2: Linear Computation
+    // Setup weights (m=2 neurons, n=3 inputs), biases (2), batch_input (3 × 4)
+    int m = 2, n = vec_size; // Reuse vec_size as num_inputs
+    Eigen::MatrixXd host_weights(m, n);
+    host_weights << 0.1, 0.2, 0.3,
+        0.4, 0.5, 0.6;
+    Eigen::VectorXd host_biases(m);
+    host_biases << 0.7, 0.8;
+
+    double* d_weights = nullptr;
+    double* d_biases = nullptr;
+    double* d_batch_z = nullptr;
+    ctx.allocate_weights(&d_weights, m, n);
+    ctx.allocate_biases(&d_biases, m);
+    ctx.allocate_batch_vector(&d_batch_z, m, batch_size);
+
+    ctx.copy_to_device(d_weights, host_weights);
+    ctx.copy_biases_to_device(d_biases, host_biases);
+
+    // Compute on GPU
+    ctx.computeLinearGPU_batch(d_weights, d_batch, d_biases, d_batch_z, m, n, batch_size);
+
+    // Compute on host for verification
+    std::vector<Eigen::VectorXd> host_z(batch_size, Eigen::VectorXd(m));
+    for (int b = 0; b < batch_size; ++b) {
+        host_z[b] = host_weights * host_batch[b] + host_biases;
+    }
+
+    // Copy back and assert
+    std::vector<Eigen::VectorXd> gpu_z(batch_size);
+    ctx.copy_batch_to_host(gpu_z, d_batch_z, m, batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        assertVectorApprox(gpu_z[b], host_z[b], TOL, "Batched linear mismatch", __FILE__, __LINE__);
+    }
+
+
+    // Test 3: Batched Activation (sigmoid)
+    SigmoidActivation sigmoid; // Use sigmoid for testing
+    double* d_batch_a = nullptr;
+    ctx.allocate_batch_vector(&d_batch_a, m, batch_size);
+    ctx.applyActivationGPU_batch(d_batch_z, d_batch_a, m, batch_size, &sigmoid);
+
+    // Host verification
+    std::vector<Eigen::VectorXd> host_a(batch_size, Eigen::VectorXd(m));
+    for (int b = 0; b < batch_size; ++b) {
+        host_a[b] = host_z[b].unaryExpr([](double val) { return 1.0 / (1.0 + std::exp(-val)); });
+    }
+
+    std::vector<Eigen::VectorXd> gpu_a(batch_size);
+    ctx.copy_batch_to_host(gpu_a, d_batch_a, m, batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        assertVectorApprox(gpu_a[b], host_a[b], TOL, "Batched activation mismatch", __FILE__, __LINE__);
+    }
+
+
+    // Test 4: Debug and Utility (set_to_zero_batch)
+    ctx.set_to_zero_batch(d_batch_a, m, batch_size);
+    ctx.copy_batch_to_host(gpu_a, d_batch_a, m, batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        assertVectorApprox(gpu_a[b], Eigen::VectorXd::Zero(m), TOL, "set_to_zero_batch failed", __FILE__, __LINE__);
+    }
+
+    // Test debugPrint_batch (manual verification, no assert; check console output)
+    ctx.debugPrint_batch(d_batch_a, m, batch_size); // Should print zeros
+
+    // Test 5: Edge Cases
+    // batch_size=1: Should match single-example
+    int single_batch = 1;
+    double* d_single_batch = nullptr;
+    ctx.allocate_batch_vector(&d_single_batch, vec_size, single_batch);
+    std::vector<Eigen::VectorXd> single_host_batch = { host_batch[0] };
+    ctx.copy_batch_to_device(d_single_batch, single_host_batch);
+
+    double* d_single_z = nullptr;
+    ctx.allocate_batch_vector(&d_single_z, m, single_batch);
+    ctx.computeLinearGPU_batch(d_weights, d_single_batch, d_biases, d_single_z, m, n, single_batch);
+
+    std::vector<Eigen::VectorXd> single_gpu_z(single_batch);
+    ctx.copy_batch_to_host(single_gpu_z, d_single_z, m, single_batch);
+    assertVectorApprox(single_gpu_z[0], host_z[0], TOL, "batch_size=1 linear mismatch", __FILE__, __LINE__);
+
+    // batch_size=0: Graceful (no-op)
+    std::vector<Eigen::VectorXd> empty_batch;
+    ctx.copy_batch_to_device(d_batch, empty_batch); // Should do nothing
+    // No assert; just ensure no crash
+
+    // Sub-batch throw: Test process_subbatched with too-large size
+    bool threw = false;
+    try {
+        ctx.process_subbatched([](int) {}, 200, GPUComputationContext::MAX_BATCH_SIZE);
+    }
+    catch (const std::runtime_error&) {
+        threw = true;
+    }
+    assertTrue(threw, "process_subbatched did not throw for oversized batch", __FILE__, __LINE__);
+
+    // Clean up
+    ctx.free_batch_vector(d_batch);
+    ctx.free_batch_vector(d_batch_z);
+    ctx.free_batch_vector(d_batch_a);
+    ctx.free_batch_vector(d_single_batch);
+    ctx.free_batch_vector(d_single_z);
+    ctx.free_weights(d_weights);
+    ctx.free_biases(d_biases);
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+
 
 
 

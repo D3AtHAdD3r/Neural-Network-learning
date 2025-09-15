@@ -59,7 +59,7 @@ public:
 public:
 
     // Compute linear transformation on GPU: weights * input + biases
-    void computeLinearGPU(const double* d_weights, const double* d_input, const double* d_biases, double* d_z, int m, int n);
+    void computeLinearGPU(const double* d_weights,const double* d_input,const double* d_biases, double* d_z, int m, int n);
 
     // Apply activation function (assumes sigmoid for now using cuDNN)
     void applyActivationGPU(double* d_z, double* d_a, int n, const Activation* activation);
@@ -87,7 +87,7 @@ public:
         double* d_biases,
         const double* weight_grads,
         const double* bias_grads,
-        double* d_temp_weight_grads,
+        double* d_temp_weight_grads, 
         double* d_temp_bias_grads,
         int m, int n, int bias_size, double scale);
 
@@ -140,10 +140,10 @@ public:
     void launch_elementwise_subtract(const double* a, const double* b, double* c, int n);
     //debug
     void debugPrint(const double* data, int n);
-
+    
 public:
     //Batch Processing funcs
-
+    
     // Placeholder function to dynamically estimate max batch size based on GPU memory.
     // Beginner note: GPUs have limited VRAM (video RAM). This queries the device's total memory
     // and estimates how much we can use for batches (e.g., 10% of total mem for buffers).
