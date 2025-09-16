@@ -172,7 +172,7 @@ public:
     void copy_batch_to_device(double* d_batch_matrix, const std::vector<Eigen::VectorXd>& batch, bool transpose = false);
 
     // Copy a batch matrix from device to host (std::vector of Eigen vectors)
-    void copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, double* d_batch_matrix, int vec_size, int batch_size);
+    void copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, const double* d_batch_matrix, int vec_size, int batch_size);
 
     // Placeholder for sub-batching: Process large batches in chunks
     void process_subbatched(std::function<void(int sub_batch_size)> func, int total_batch_size, int max_batch);

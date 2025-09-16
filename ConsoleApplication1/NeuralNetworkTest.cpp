@@ -98,6 +98,17 @@ void NeuralNetworkTest::generateXORLikeDataset(std::vector<std::pair<Eigen::Vect
     }
 }
 
+// Function to generate random input vector
+Eigen::VectorXd NeuralNetworkTest::generate_random_input(int size, unsigned int seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    Eigen::VectorXd input(size);
+    for (int i = 0; i < size; ++i) {
+        input(i) = dist(rng);
+    }
+    return input;
+}
+
 void NeuralNetworkTest::getPrecomputedBackpropTestData(Network::LossType loss_type,
     std::vector<Eigen::MatrixXd>& weights,
     std::vector<Eigen::VectorXd>& biases,
@@ -597,27 +608,6 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
     return true;
 }
 
-
-bool NeuralNetworkTest::runAllTests()
-{
-    passed_tests_ = 0;
-    total_tests_ = 0;
-    
-    //tests
-    //testNetworkBackprop();
-    //testUpdateMiniBatch();
-    //customtest();
-
-    testBatchFunctionsGPU();
-
-    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
-    return passed_tests_ == total_tests_;
-}
-
-bool NeuralNetworkTest::customtest() {
-    return true;
-}
-
 //These tests verify the batch functions in GPUComputationContext.
 // We use small data for quick execution and easy verification against host computations.
 bool NeuralNetworkTest::testBatchFunctionsGPU() {
@@ -754,9 +744,88 @@ bool NeuralNetworkTest::testBatchFunctionsGPU() {
     return true;
 }
 
+// Test function for a given batch size
+bool NeuralNetworkTest::test_feedforward_batch_vs_single(int batch_size, int input_size, int hidden_size, int output_size, GPUComputationContext* gpu_context) {
+    std::vector<int> sizes = { input_size, hidden_size, output_size };
+    Network net(sizes, 0.0, Network::LossType::MSE, Network::NeuronType::SIGMOID, gpu_context, 42);
+
+    // Generate random inputs (use same seed for reproducibility)
+    std::vector<Eigen::VectorXd> batch_inputs;
+    for (int i = 0; i < batch_size; ++i) {
+        batch_inputs.push_back(generate_random_input(input_size, 42 + i));  // Different seed per input
+    }
+
+    // Single-example feedforward
+    std::vector<Eigen::VectorXd> single_outputs;
+    for (const auto& input : batch_inputs) {
+        single_outputs.push_back(net.feedforward_gpu(input));
+    }
+
+    // Batched feedforward
+    std::vector<Eigen::VectorXd> batch_outputs;
+    net.feedforward_gpu_batch(batch_inputs, batch_outputs);
+
+    // Compare outputs
+    bool all_match = true;
+    for (int i = 0; i < batch_size; ++i) {
+        double max_diff = (single_outputs[i] - batch_outputs[i]).cwiseAbs().maxCoeff();
+        if (max_diff > TOL) {
+            all_match = false;
+            std::cout << "Mismatch for example " << i << ": max diff = " << max_diff << std::endl;
+        }
+    }
+
+    return all_match;
+}
+
+bool NeuralNetworkTest::test_feedforward_gpu_batch() {
+    std::cout << "-----Running Test: test_feedforward_gpu_batch-----" << std::endl;
+    total_tests_++;
+    // Test parameters (simple network: 10 inputs, 5 hidden, 3 outputs)
+    int input_size = 10;
+    int hidden_size = 5;
+    int output_size = 3;
+
+    // Test for batch_size=1
+    if (test_feedforward_batch_vs_single(1, input_size, hidden_size, output_size, gpuContext.get())) {
+        std::cout << "Test passed for batch_size=1" << std::endl;
+    }
+    else {
+        std::cout << "Test failed for batch_size=1" << std::endl;
+    }
+
+    // Test for batch_size=4
+    if (test_feedforward_batch_vs_single(4, input_size, hidden_size, output_size, gpuContext.get())) {
+        std::cout << "Test passed for batch_size=4" << std::endl;
+    }
+    else {
+        std::cout << "Test failed for batch_size=4" << std::endl;
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
 
 
+bool NeuralNetworkTest::runAllTests()
+{
+    passed_tests_ = 0;
+    total_tests_ = 0;
 
+    //tests
+    //testNetworkBackprop();
+    //testUpdateMiniBatch();
+    //customtest();
 
+    //testBatchFunctionsGPU();
+    test_feedforward_gpu_batch();
 
+    std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
+    return passed_tests_ == total_tests_;
+}
+
+bool NeuralNetworkTest::customtest() {
+    return true;
+}
 

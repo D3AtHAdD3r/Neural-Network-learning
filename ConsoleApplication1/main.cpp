@@ -50,7 +50,7 @@ void printNetworkParams(const std::string& label, const std::vector<int>& sizes,
     std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
 }
 
-int main555() {
+int main333() {
     std::cout << "-----------program started----------\n";
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -76,7 +76,7 @@ int main555() {
     double eta = 1.5;
 
     // Display network parameters
-    printNetworkParams("CPU", sizes, l2strength, loss, neuron);
+    //printNetworkParams("CPU", sizes, l2strength, loss, neuron);
     printNetworkParams("GPU", sizes, l2strength, loss, neuron);
 
     /*std::cout << "Training with Cpu context...\n";

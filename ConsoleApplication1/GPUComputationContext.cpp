@@ -544,7 +544,7 @@ void GPUComputationContext::copy_batch_to_device(double* d_batch_matrix, const s
     }
 }
 
-void GPUComputationContext::copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, double* d_batch_matrix, int vec_size, int batch_size) {
+void GPUComputationContext::copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, const double* d_batch_matrix, int vec_size, int batch_size) {
     // Beginner note: Copy a batch matrix from device to host.
     // The device matrix is vec_size × batch_size (column-major).
     // Each column becomes an Eigen::VectorXd in the output batch.

@@ -60,6 +60,15 @@ public:
 	void apply_derivative_gpu(double* d_delta);
 
 public:
+	//Batched  funcs
+	// Batched forward on GPU: Computes into provided batch buffers
+	// d_batch_input: num_inputs_ x batch_size (column-major)
+	// d_batch_z: pre-activations buffer (num_neurons_ x batch_size)
+	// d_batch_a: activations buffer (num_neurons_ x batch_size)
+	// Returns d_batch_a for chaining
+	const double* forward_gpu_batch(const double* d_batch_input, double* d_batch_z, double* d_batch_a, int batch_size);
+
+public:
 	const Eigen::VectorXd& get_activations() const { return activations_; }
 	const Eigen::VectorXd& get_pre_activations() const { return pre_activations_; } // New getter
 	const Eigen::MatrixXd& get_weights() const { return weights_; }

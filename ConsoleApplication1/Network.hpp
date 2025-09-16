@@ -11,7 +11,6 @@
 #include <iostream>
 #include <memory>  
 
-
 /**
  * @brief A feedforward neural network with sigmoid activation.
  *
@@ -58,6 +57,14 @@ public:
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
 
+public:
+    //Batched funcs
+    // Batched feedforward on GPU: Processes a batch of inputs
+    // batch_inputs: Vector of input vectors (size <= allocated_batch_size_)
+    // batch_outputs: Output vector to store results (resized to batch_inputs.size())
+    void feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs);
+    double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
+    void init_batch_buffers(int mini_batch_size);
 public:
     //Debug
     void display_biases() const;

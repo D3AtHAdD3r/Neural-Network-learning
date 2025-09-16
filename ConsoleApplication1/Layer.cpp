@@ -258,3 +258,23 @@ void Layer::set_activations(const Eigen::VectorXd& activations) {
         contextGPU_->copy_to_device(d_activations_, activations);
     }
 }
+
+const double* Layer::forward_gpu_batch(const double* d_batch_input, double* d_batch_z, double* d_batch_a, int batch_size) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    // Compute linear: z = W * input + b (batched)
+    contextGPU_->computeLinearGPU_batch(d_weights_, d_batch_input, d_biases_, d_batch_z, num_neurons_, num_inputs_, batch_size);
+
+    // For backprop compatibility: Optionally copy last example to host pre_activations_
+    // But for batch mode, skip host update unless needed; set flag to false
+    has_valid_activations_ = false;
+
+    // Apply activation
+    contextGPU_->applyActivationGPU_batch(d_batch_z, d_batch_a, num_neurons_, batch_size, activation_);
+
+    // Optionally: Copy last activation to host for single-example compatibility
+    // But skip for now to avoid overhead
+    return d_batch_a;
+}

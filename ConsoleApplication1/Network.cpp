@@ -183,30 +183,7 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     // New: Allocate batch buffers on first SGD call
     // mini_batch_size (capped at max_batch_size_). This avoids wasting memory for smaller batches.
     if (is_gpu_context_ && !batch_buffers_allocated_) {
-        if (mini_batch_size > max_batch_size_) {
-            throw std::runtime_error("Mini-batch size (" + std::to_string(mini_batch_size) +
-                ") exceeds maximum allowed (" + std::to_string(max_batch_size_) + ")");
-        }
-
-        allocated_batch_size_ = mini_batch_size;  // Store actual size used
-        d_batch_pre_activations.resize(layers.size());
-        d_batch_activations.resize(layers.size());
-
-        // Allocate main input buffer
-        int input_size = sizes[0];
-        contextGPU_->allocate_vector(&d_batch_main_input, input_size * allocated_batch_size_);
-        contextGPU_->set_to_zero(d_batch_main_input, input_size * allocated_batch_size_);
-
-        // Allocate per-layer buffers
-        for (size_t i = 0; i < layers.size(); ++i) {
-            int layer_size = sizes[i + 1];  // Neurons in this layer
-            contextGPU_->allocate_vector(&d_batch_pre_activations[i], layer_size * allocated_batch_size_);
-            contextGPU_->allocate_vector(&d_batch_activations[i], layer_size * allocated_batch_size_);
-            contextGPU_->set_to_zero(d_batch_pre_activations[i], layer_size * allocated_batch_size_);
-            contextGPU_->set_to_zero(d_batch_activations[i], layer_size * allocated_batch_size_);
-        }
-
-        batch_buffers_allocated_ = true;  // Mark as allocated
+        init_batch_buffers(mini_batch_size);
     }
 
 
@@ -221,7 +198,12 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
                 training_data.begin() + k,
                 training_data.begin() + std::min(k + mini_batch_size, n));
 
-            batch_gradient_norm += update_mini_batch(mini_batch, eta, n);
+            if (is_gpu_context_) {
+                batch_gradient_norm += update_mini_batch_batch(mini_batch, eta, n);
+            }
+            else {
+                batch_gradient_norm += update_mini_batch(mini_batch, eta, n);
+            }
         }
 
         batch_gradient_norm /= num_batches;
@@ -249,6 +231,63 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
             std::cout << "Epoch " << j << " complete" << std::endl;
         }
     }
+}
+
+
+double Network::update_mini_batch_batch(
+    const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch,
+    double eta, size_t n) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    if (!batch_buffers_allocated_) {
+        init_batch_buffers(mini_batch.size());
+    }
+
+    double norm = 0.0;
+    int batch_size = static_cast<int>(mini_batch.size());
+    if (batch_size == 0) return 0.0;
+
+    std::vector<Eigen::VectorXd> batch_inputs(batch_size);
+    std::vector<Eigen::VectorXd> batch_targets(batch_size);
+    for (int i = 0; i < batch_size; ++i) {
+        batch_inputs[i] = mini_batch[i].first;
+        batch_targets[i] = mini_batch[i].second;
+    }
+
+    std::vector<Eigen::VectorXd> batch_outputs;
+    feedforward_gpu_batch(batch_inputs, batch_outputs);
+
+    for (size_t i = 0; i < layers.size(); ++i) {
+        contextGPU_->set_to_zero(accumulate_weight_grads[i], weight_rows[i] * weight_cols[i]);
+        contextGPU_->set_to_zero(accumulate_bias_grads[i], bias_sizes[i]);
+    }
+
+    // Accumulate gradients over mini-batch
+    for (const auto& [x, y] : mini_batch) {
+        auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
+        contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, 1.0);
+    }
+
+    // Add L2 regularization
+    if (lambda > 0.0) {
+        double reg_scale = lambda * mini_batch.size() / n;
+        for (size_t i = 0; i < layers.size(); ++i) {
+            contextGPU_->add_regularization(accumulate_weight_grads[i], layers[i]->get_d_weights(), reg_scale, weight_rows[i], weight_cols[i]);
+        }
+    }
+
+    // Update parameters
+    double update_scale = eta / mini_batch.size();
+    for (size_t i = 0; i < layers.size(); ++i) {
+        layers[i]->update_parameters_gpu(accumulate_weight_grads[i], accumulate_bias_grads[i], temp_weight_grads[i], temp_bias_grads[i], update_scale);
+    }
+
+    // Compute gradient norm
+    norm = contextGPU_->compute_gradient_norm_gpu(accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
+
+    return norm;
 }
 
 
@@ -793,4 +832,74 @@ std::vector<double*> Network::get_layer_d_delta() {
         deltas.push_back(layer->get_d_delta_());
     }
     return deltas;
+}
+
+void Network::feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    if (!batch_buffers_allocated_) {
+        init_batch_buffers(batch_inputs.size());
+    }
+
+    int batch_size = static_cast<int>(batch_inputs.size());
+    if (batch_size == 0) return;
+    if (allocated_batch_size_ == 0) {
+        allocated_batch_size_ = batch_size;
+    }
+    if (batch_size > allocated_batch_size_) {
+        throw std::runtime_error("Batch size exceeds allocated size; reallocate or use sub-batching");
+    }
+
+    // Copy batch inputs to device (column-major: sizes[0] x batch_size)
+    contextGPU_->copy_batch_to_device(d_batch_main_input, batch_inputs, false);  // false: not transposed
+
+    // Chain through layers
+    const double* d_current = d_batch_main_input;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        d_current = layers[i]->forward_gpu_batch(
+            d_current,
+            d_batch_pre_activations[i],
+            d_batch_activations[i],
+            batch_size
+        );
+    }
+
+    // Copy final activations to host
+    contextGPU_->copy_batch_to_host(batch_outputs, d_current, sizes.back(), batch_size);
+}
+
+void Network::init_batch_buffers(int mini_batch_size) {
+    
+    // mini_batch_size (capped at max_batch_size_). This avoids wasting memory for smaller batches.
+    if (!batch_buffers_allocated_) {
+        if (mini_batch_size > max_batch_size_) {
+            throw std::runtime_error("Mini-batch size (" + std::to_string(mini_batch_size) +
+                ") exceeds maximum allowed (" + std::to_string(max_batch_size_) + ")");
+        }
+
+        allocated_batch_size_ = mini_batch_size;  // Store actual size used
+        d_batch_pre_activations.resize(layers.size());
+        d_batch_activations.resize(layers.size());
+
+        // Allocate main input buffer
+        int input_size = sizes[0];
+        contextGPU_->allocate_vector(&d_batch_main_input, input_size * allocated_batch_size_);
+        contextGPU_->set_to_zero(d_batch_main_input, input_size * allocated_batch_size_);
+
+        // Allocate per-layer buffers
+        for (size_t i = 0; i < layers.size(); ++i) {
+            int layer_size = sizes[i + 1];  // Neurons in this layer
+            contextGPU_->allocate_vector(&d_batch_pre_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->allocate_vector(&d_batch_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->set_to_zero(d_batch_pre_activations[i], layer_size * allocated_batch_size_);
+            contextGPU_->set_to_zero(d_batch_activations[i], layer_size * allocated_batch_size_);
+        }
+
+        batch_buffers_allocated_ = true;  // Mark as allocated
+    }
+    else {
+        throw std::runtime_error(" batch buffers already allocated");
+    }
 }

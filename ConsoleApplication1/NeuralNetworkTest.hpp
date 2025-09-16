@@ -32,6 +32,8 @@ public:
 public:
     //Batched func tests
     bool testBatchFunctionsGPU();
+    bool test_feedforward_batch_vs_single(int batch_size, int input_size, int hidden_size, int output_size, GPUComputationContext* gpu_context);
+    bool test_feedforward_gpu_batch();
 public:
     bool runAllTests();
 public:
@@ -44,6 +46,8 @@ public:
      */
     void generateXORLikeDataset(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& training_data,
         std::vector<std::pair<Eigen::VectorXd, int>>& test_data);
+
+    Eigen::VectorXd generate_random_input(int size, unsigned int seed);
 private:
 
     /**
