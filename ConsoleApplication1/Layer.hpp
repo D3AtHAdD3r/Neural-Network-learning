@@ -67,6 +67,9 @@ public:
 	// d_batch_a: activations buffer (num_neurons_ x batch_size)
 	// Returns d_batch_a for chaining
 	const double* forward_gpu_batch(const double* d_batch_input, double* d_batch_z, double* d_batch_a, int batch_size);
+	
+	// Batched apply derivative: d_delta *= activation'(d_activations) (in-place, rows x batch_size)
+	void apply_derivative_gpu_batch(double* d_delta, int batch_size);
 
 public:
 	const Eigen::VectorXd& get_activations() const { return activations_; }

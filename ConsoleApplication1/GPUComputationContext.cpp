@@ -88,6 +88,37 @@ __global__ void add_bias_batch(double* z, const double* biases, int m, int batch
     }
 }
 
+// New kernel: Batched elementwise subtract
+__global__ void elementwise_subtract_batch_kernel(const double* a, const double* b, double* c, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;  // Column-major
+        c[idx] = a[idx] - b[idx];
+    }
+}
+
+// New kernel: Batched elementwise multiply
+__global__ void elementwise_multiply_batch_kernel(const double* a, const double* b, double* c, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;
+        c[idx] = a[idx] * b[idx];
+    }
+}
+
+// New kernel: Batched sigmoid derivative (activation' = a * (1 - a), but use pre-activations if needed)
+__global__ void sigmoid_derivative_batch_kernel(const double* d_activations, double* d_derivatives, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;
+        double a = d_activations[idx];
+        d_derivatives[idx] = a * (1.0 - a);
+    }
+}
+
 // New: Elementwise subtract (a - b -> c)
 void GPUComputationContext::launch_elementwise_subtract(const double* a, const double* b, double* c, int n) {
     CHECK_CUDA(cudaMemcpy(c, a, n * sizeof(double), cudaMemcpyDeviceToDevice));
@@ -659,4 +690,88 @@ void GPUComputationContext::set_to_zero_batch(double* d_data, int size, int batc
     int blocks = (total_size + threads - 1) / threads;
     set_to_zero_kernel << <blocks, threads >> > (d_data, total_size);
     CHECK_CUDA(cudaGetLastError());
+}
+
+void GPUComputationContext::launch_elementwise_subtract_batch(const double* a, const double* b, double* c, int rows, int batch_size) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+        (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    elementwise_subtract_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+void GPUComputationContext::launch_elementwise_multiply_batch(const double* a, const double* b, double* c, int rows, int batch_size) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+        (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    elementwise_multiply_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+
+void GPUComputationContext::computeActivationDerivativeGPU_batch(const double* d_activations, const double* d_pre_activations,
+    const double* d_dy, double* d_derivatives, int rows, int batch_size,
+    const Activation* activation) {
+    // For sigmoid, use activations directly (no pre needed)
+    cudnnActivationMode_t mode = activation->getCudnnActivationMode(); //temp check as Activation doesnt store enum type activation
+    if (mode == CUDNN_ACTIVATION_SIGMOID) {
+        dim3 threadsPerBlock(16, 16);
+        dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+            (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+        sigmoid_derivative_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (d_activations, d_derivatives, rows, batch_size);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    else {
+        // Extend for other activations
+        throw std::runtime_error("Unsupported activation for batched derivative");
+    }
+    // Multiply by d_dy if provided (e.g., for chain rule, but usually 1 for sigmoid)
+    if (d_dy) {
+        launch_elementwise_multiply_batch(d_derivatives, d_dy, d_derivatives, rows, batch_size);  // d_dy should be broadcast if vector
+    }
+}
+
+
+void GPUComputationContext::computeGradientsGPU_batch(const double* d_delta_batch, const double* d_prev_a_batch,
+    const double* d_derivatives_batch, double* d_weight_grads,
+    double* d_bias_grads, int m, int n, int batch_size, bool apply_derivative) {
+    // Apply derivative if needed: delta *= derivatives (elementwise batch)
+    if (apply_derivative && d_derivatives_batch) {
+        double* d_temp_delta = d_delta_batch;  // In-place for now
+        launch_elementwise_multiply_batch(d_delta_batch, d_derivatives_batch, d_temp_delta, m, batch_size);
+    }
+
+    // Accumulate bias grads: sum over batch columns (simple loop for now)
+    double alpha = 1.0;
+    for (int b = 0; b < batch_size; ++b) {
+        const double* d_delta_slice = d_delta_batch + b * m;
+        CHECK_CUBLAS(cublasDaxpy(cublasHandle, m, &alpha, d_delta_slice, 1, d_bias_grads, 1));
+    }
+
+    // Accumulate weight grads: d_weight_grads += delta_batch * prev_a_batch^T (m x n, beta=1 for accumulate)
+    double beta = 1.0;  // Accumulate
+    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, batch_size,
+        &alpha, d_delta_batch, m, d_prev_a_batch, n, &beta, d_weight_grads, m));
+}
+
+void GPUComputationContext::compute_delta_back_batch(const double* d_weights, const double* d_delta_next_batch,
+    double* d_delta_batch, int m, int n, int batch_size) {
+    // delta_batch (n x batch_size) = W^T (n x m) * delta_next_batch (m x batch_size)
+    double alpha = 1.0, beta = 0.0;
+    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, batch_size, m,
+        &alpha, d_weights, m, d_delta_next_batch, m, &beta, d_delta_batch, n));
+}
+
+
+double GPUComputationContext::compute_mse_loss_batch_gpu(const double* d_output, const double* d_target, int rows, int batch_size) {
+    // Reuse single-example logic but for batch: diff = output - target, then sum squares / (rows * batch_size)
+    int total_n = rows * batch_size;
+    double* d_diff;
+    CHECK_CUDA(cudaMalloc(&d_diff, total_n * sizeof(double)));
+    launch_elementwise_subtract_batch(d_output, d_target, d_diff, rows, batch_size);  // Subtract batch
+
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, total_n, d_diff, 1, &norm));
+    CHECK_CUDA(cudaFree(d_diff));
+    return (norm * norm) / (rows * batch_size);  // Mean MSE
 }

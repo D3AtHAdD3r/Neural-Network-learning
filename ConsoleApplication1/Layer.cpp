@@ -278,3 +278,13 @@ const double* Layer::forward_gpu_batch(const double* d_batch_input, double* d_ba
     // But skip for now to avoid overhead
     return d_batch_a;
 }
+
+void Layer::apply_derivative_gpu_batch(double* d_delta, int batch_size) {
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+    // Compute derivatives batch
+    contextGPU_->computeActivationDerivativeGPU_batch(d_activations_, d_pre_activations_, d_dy, d_derivatives, num_neurons_, batch_size, activation_);
+    // Multiply in-place
+    contextGPU_->launch_elementwise_multiply_batch(d_delta, d_derivatives, d_delta, num_neurons_, batch_size);
+}

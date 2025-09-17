@@ -65,6 +65,9 @@ public:
     void feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs);
     double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
     void init_batch_buffers(int mini_batch_size);
+
+    // New: Batched backprop on GPU (call after feedforward; accumulates grads, computes loss)
+    void backprop_gpu_batch(const std::vector<Eigen::VectorXd>& batch_targets, double& batch_loss);
 public:
     //Debug
     void display_biases() const;
@@ -133,6 +136,11 @@ private:
     double* d_batch_main_input = nullptr;       // GPU buffer for main batch input (input_size * allocated_batch_size_)
     std::vector<double*> d_batch_pre_activations;  // Per-layer pre-activations (neurons * allocated_batch_size_)
     std::vector<double*> d_batch_activations;      // Per-layer activations (neurons * allocated_batch_size_)
+    
+    // New: Batched deltas and targets
+    std::vector<double*> d_batch_deltas;        // Per-layer deltas (neurons * allocated_batch_size_)
+    double* d_batch_targets = nullptr;          // Output targets (output_size * allocated_batch_size_)
+
 };
 
 #endif

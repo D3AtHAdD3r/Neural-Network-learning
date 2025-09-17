@@ -121,6 +121,11 @@ Network::~Network() {
             for (auto ptr : d_batch_activations) {
                 contextGPU_->free_vector(ptr);
             }
+            // New: Free deltas and targets
+            for (auto ptr : d_batch_deltas) {
+                contextGPU_->free_vector(ptr);
+            }
+            contextGPU_->free_vector(d_batch_targets);
         }
     }
 
@@ -432,7 +437,7 @@ std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
     }
 
     //TODO: make d_cost_prime class member(cache) and init it in constructor with output layer neuron size, free in destructor.
-    bool apply_deriv;
+    bool apply_deriv = false;
     auto output_layer = layers.back().get();
     double* d_cost_prime = nullptr;
     contextGPU_->allocate_vector(&d_cost_prime, output_layer->get_num_neurons());
@@ -470,8 +475,8 @@ std::pair<std::vector<double*>, std::vector<double*>> Network::backprop_gpu(
         contextGPU_->allocate_vector(&d_incoming_delta, layer->get_num_neurons());
 
         //Compute delta back (delta = W^T * delta_next)
-        contextGPU_->compute_delta_back(next_layer->get_d_weights(), next_layer->get_d_delta_(), d_incoming_delta,
-            next_layer->get_num_neurons(), next_layer->get_num_inputs());
+        contextGPU_->compute_delta_back(next_layer->get_d_weights(), next_layer->get_d_delta_(), 
+            d_incoming_delta, next_layer->get_num_neurons(), next_layer->get_num_inputs());
 
         layer->compute_gradients_gpu(d_incoming_delta, true);  // Always apply derivative for hidden layers
         nabla_w[l] = layer->get_d_weight_grads_();
@@ -903,3 +908,4 @@ void Network::init_batch_buffers(int mini_batch_size) {
         throw std::runtime_error(" batch buffers already allocated");
     }
 }
+
