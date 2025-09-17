@@ -191,6 +191,24 @@ public:
 
     // Zero out a batch matrix
     void set_to_zero_batch(double* d_data, int size, int batch_size);
+
+    //----------Phase5.1 added funcs---------//
+    // Batched elementwise subtract: c = a - b (rows x batch_size, column-major)
+    void launch_elementwise_subtract_batch(const double* a, const double* b, double* c, int rows, int batch_size);
+
+    // Batched elementwise multiply: c = a * b (rows x batch_size)
+    void launch_elementwise_multiply_batch(const double* a, const double* b, double* c, int rows, int batch_size);
+
+    // Batched gradient computation: Accumulates weight_grad += delta * prev_a^T, bias_grad += sum(delta)
+    void computeGradientsGPU_batch(const double* d_deltas_batch, const double* d_prev_activations_batch, double* d_weight_grads, double* d_bias_grads, int m, int n, int batch_size);
+
+    // Batched delta propagation: delta = W^T * next_delta (n x batch_size)
+    void compute_delta_back_batch(const double* d_weights, const double* d_delta_next_batch, double* d_delta_batch, int m, int n, int batch_size);
+
+    // Batched activation derivative: derivatives = activation'(pre_activations) (vec_size x batch_size)
+    void computeActivationDerivativeGPU_batch(const double* d_pre_activations, double* d_derivatives, int vec_size, int batch_size, const Activation* activation);
+
+    void cost_prime_mse_crossent_batched(const double* d_output, const double* d_target, double* d_delta, int rows, int batch_size);
 };
 
 

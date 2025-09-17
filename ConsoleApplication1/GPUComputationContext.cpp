@@ -88,6 +88,40 @@ __global__ void add_bias_batch(double* z, const double* biases, int m, int batch
     }
 }
 
+//---------phase5.1 added kernels-------------//
+// Kernel for batched elementwise subtract
+__global__ void elementwise_subtract_batch_kernel(const double* a, const double* b, double* c, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;  // Neuron index
+    int col = blockIdx.y * blockDim.y + threadIdx.y;  // Batch item index
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;  // Column-major
+        c[idx] = a[idx] - b[idx];
+    }
+}
+
+// Kernel for batched elementwise multiply
+__global__ void elementwise_multiply_batch_kernel(const double* a, const double* b, double* c, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;
+        c[idx] = a[idx] * b[idx];
+    }
+}
+
+// Kernel for batched sigmoid derivative
+__global__ void sigmoid_prime_batch_kernel(const double* z, double* out, int rows, int batch_size) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < batch_size) {
+        int idx = row + col * rows;
+        double sig = 1.0 / (1.0 + exp(-z[idx]));
+        out[idx] = sig * (1.0 - sig);
+    }
+}
+
+//---------------------------------------------//
+
 // New: Elementwise subtract (a - b -> c)
 void GPUComputationContext::launch_elementwise_subtract(const double* a, const double* b, double* c, int n) {
     CHECK_CUDA(cudaMemcpy(c, a, n * sizeof(double), cudaMemcpyDeviceToDevice));
@@ -659,4 +693,56 @@ void GPUComputationContext::set_to_zero_batch(double* d_data, int size, int batc
     int blocks = (total_size + threads - 1) / threads;
     set_to_zero_kernel << <blocks, threads >> > (d_data, total_size);
     CHECK_CUDA(cudaGetLastError());
+}
+
+
+
+//---------phase5.1 added funcs-------------//
+void GPUComputationContext::launch_elementwise_subtract_batch(const double* a, const double* b, double* c, int rows, int batch_size) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+        (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    elementwise_subtract_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// Wrapper for cost derivative (MSE or CE with sigmoid: output - target)
+void GPUComputationContext::cost_prime_mse_crossent_batched(const double* d_output, const double* d_target, double* d_delta, int rows, int batch_size) {
+    launch_elementwise_subtract_batch(d_output, d_target, d_delta, rows, batch_size);
+}
+
+void GPUComputationContext::launch_elementwise_multiply_batch(const double* a, const double* b, double* c, int rows, int batch_size) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+        (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    elementwise_multiply_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+void GPUComputationContext::computeActivationDerivativeGPU_batch(const double* d_pre_activations, double* d_derivatives, int vec_size, int batch_size, const Activation* activation) {
+    cudnnActivationMode_t mode = activation->getCudnnActivationMode();
+    if (mode == CUDNN_ACTIVATION_SIGMOID) {
+        dim3 threads(16, 16);
+        dim3 blocks((vec_size + threads.x - 1) / threads.x, (batch_size + threads.y - 1) / threads.y);
+        sigmoid_prime_batch_kernel << <blocks, threads >> > (d_pre_activations, d_derivatives, vec_size, batch_size);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    else {
+        throw std::runtime_error("Unsupported activation for batched derivative");
+    }
+}
+
+void GPUComputationContext::computeGradientsGPU_batch(const double* d_deltas_batch, const double* d_prev_activations_batch, double* d_weight_grads, double* d_bias_grads, int m, int n, int batch_size) {
+    // Accumulate bias grads: bias_grad += sum(deltas over batch) using gemm with ones vector
+    double alpha = 1.0, beta = 1.0;  // Accumulate
+    double* d_ones_batch;
+    CHECK_CUDA(cudaMalloc(&d_ones_batch, batch_size * sizeof(double)));
+    std::vector<double> ones(batch_size, 1.0);
+    CHECK_CUDA(cudaMemcpy(d_ones_batch, ones.data(), batch_size * sizeof(double), cudaMemcpyHostToDevice));
+    // bias_grad = deltas_batch * ones^T (m x batch_size) * (batch_size x 1) -> m x 1
+    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, 1, batch_size, &alpha, d_deltas_batch, m, d_ones_batch, batch_size, &beta, d_bias_grads, m));
+    CHECK_CUDA(cudaFree(d_ones_batch));
+
+    // Weight grads: weight_grad += deltas_batch * prev_activations_batch^T
+    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, batch_size, &alpha, d_deltas_batch, m, d_prev_activations_batch, n, &beta, d_weight_grads, m));
 }
