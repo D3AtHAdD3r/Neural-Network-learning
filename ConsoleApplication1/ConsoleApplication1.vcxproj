@@ -209,6 +209,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="TODO.txt" />
+    <Text Include="TODO2.txt" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="test_cuda.cu" />

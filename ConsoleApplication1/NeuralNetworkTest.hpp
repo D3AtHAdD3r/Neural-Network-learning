@@ -31,9 +31,20 @@ public:
     bool testUpdateMiniBatch();
 public:
     //Batched func tests
-    bool testBatchFunctionsGPU();
     bool test_feedforward_batch_vs_single(int batch_size, int input_size, int hidden_size, int output_size, GPUComputationContext* gpu_context);
     bool test_feedforward_gpu_batch();
+    bool test_backprop_gpu_batch();
+    bool test_update_mini_batch_batch();
+public:
+    //Batched gpu computation context func tests
+    bool testBatchFunctionsGPU_context();
+    bool test_launch_elementwise_subtract_batch();
+    bool test_launch_elementwise_multiply_batch();
+    bool test_computeGradientsGPU_batch();
+    bool test_compute_delta_back_batch();
+    bool test_computeActivationDerivativeGPU_batch();
+    bool test_cost_prime_mse_crossent_batched();
+    bool test_compute_mse_loss_batch_gpu();
 public:
     bool runAllTests();
 public:

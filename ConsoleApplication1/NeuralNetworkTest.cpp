@@ -610,7 +610,7 @@ bool NeuralNetworkTest::testUpdateMiniBatch() {
 
 //These tests verify the batch functions in GPUComputationContext.
 // We use small data for quick execution and easy verification against host computations.
-bool NeuralNetworkTest::testBatchFunctionsGPU() {
+bool NeuralNetworkTest::testBatchFunctionsGPU_context() {
     std::cout << "-----Running Test: testBatchFunctionsGPU-----" << std::endl;
     total_tests_++;
 
@@ -626,7 +626,7 @@ bool NeuralNetworkTest::testBatchFunctionsGPU() {
 
     double* d_batch = nullptr;
     ctx.allocate_batch_vector(&d_batch, vec_size, batch_size);
-    ctx.copy_batch_to_device(d_batch, host_batch); // transpose=false (vec_size × batch_size)
+    ctx.copy_batch_to_device(d_batch, host_batch); // transpose=false (vec_size Ã— batch_size)
 
     std::vector<Eigen::VectorXd> host_copy_back(batch_size);
     ctx.copy_batch_to_host(host_copy_back, d_batch, vec_size, batch_size);
@@ -635,7 +635,7 @@ bool NeuralNetworkTest::testBatchFunctionsGPU() {
     }
 
     // Test 2: Linear Computation
-    // Setup weights (m=2 neurons, n=3 inputs), biases (2), batch_input (3 × 4)
+    // Setup weights (m=2 neurons, n=3 inputs), biases (2), batch_input (3 Ã— 4)
     int m = 2, n = vec_size; // Reuse vec_size as num_inputs
     Eigen::MatrixXd host_weights(m, n);
     host_weights << 0.1, 0.2, 0.3,
@@ -807,6 +807,538 @@ bool NeuralNetworkTest::test_feedforward_gpu_batch() {
     return true;
 }
 
+bool NeuralNetworkTest::test_launch_elementwise_subtract_batch() {
+    std::cout << "-----Running Test: test_launch_elementwise_subtract_batch-----" << std::endl;
+    total_tests_++;
+
+    // Setup: 2x2 matrix, batch size 2
+    int rows = 2, batch_size = 2;
+    std::vector<Eigen::VectorXd> a_batch(batch_size), b_batch(batch_size);
+    a_batch[0] = Eigen::VectorXd::Constant(rows, 1.0);  // [1, 1]
+    a_batch[1] = Eigen::VectorXd::Constant(rows, 2.0);  // [2, 2]
+    b_batch[0] = Eigen::VectorXd::Constant(rows, 0.5);  // [0.5, 0.5]
+    b_batch[1] = Eigen::VectorXd::Constant(rows, 1.5);  // [1.5, 1.5]
+
+    // Expected: c = a - b
+    std::vector<Eigen::VectorXd> expected_c(batch_size);
+    expected_c[0] = Eigen::VectorXd::Constant(rows, 0.5);  // [0.5, 0.5]
+    expected_c[1] = Eigen::VectorXd::Constant(rows, 0.5);  // [0.5, 0.5]
+
+    // GPU: Allocate and copy inputs
+    double* d_a, * d_b, * d_c;
+    gpuContext->allocate_batch_vector(&d_a, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_b, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_c, rows, batch_size);
+    gpuContext->copy_batch_to_device(d_a, a_batch, false);
+    gpuContext->copy_batch_to_device(d_b, b_batch, false);
+    gpuContext->set_to_zero_batch(d_c, rows, batch_size);
+
+    // Run GPU subtract
+    gpuContext->launch_elementwise_subtract_batch(d_a, d_b, d_c, rows, batch_size);
+
+    // Copy result back
+    std::vector<Eigen::VectorXd> result_c(batch_size);
+    gpuContext->copy_batch_to_host(result_c, d_c, rows, batch_size);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_a);
+    gpuContext->free_batch_vector(d_b);
+    gpuContext->free_batch_vector(d_c);
+
+    // Compare
+    for (int i = 0; i < batch_size; ++i) {
+        assertVectorApprox(result_c[i], expected_c[i], TOL, "Subtract result mismatch for batch " + std::to_string(i), __FILE__, __LINE__);
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_launch_elementwise_multiply_batch() {
+    std::cout << "-----Running Test: test_launch_elementwise_multiply_batch-----" << std::endl;
+    total_tests_++;
+
+    // Setup: 2x2 matrix, batch size 2
+    int rows = 2, batch_size = 2;
+    std::vector<Eigen::VectorXd> a_batch(batch_size), b_batch(batch_size);
+    a_batch[0] = Eigen::VectorXd::Constant(rows, 2.0);  // [2, 2]
+    a_batch[1] = Eigen::VectorXd::Constant(rows, 3.0);  // [3, 3]
+    b_batch[0] = Eigen::VectorXd::Constant(rows, 0.5);  // [0.5, 0.5]
+    b_batch[1] = Eigen::VectorXd::Constant(rows, 1.5);  // [1.5, 1.5]
+
+    // Expected: c = a * b
+    std::vector<Eigen::VectorXd> expected_c(batch_size);
+    expected_c[0] = Eigen::VectorXd::Constant(rows, 1.0);  // [1, 1]
+    expected_c[1] = Eigen::VectorXd::Constant(rows, 4.5);  // [4.5, 4.5]
+
+    // GPU: Allocate and copy inputs
+    double* d_a, * d_b, * d_c;
+    gpuContext->allocate_batch_vector(&d_a, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_b, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_c, rows, batch_size);
+    gpuContext->copy_batch_to_device(d_a, a_batch, false);
+    gpuContext->copy_batch_to_device(d_b, b_batch, false);
+    gpuContext->set_to_zero_batch(d_c, rows, batch_size);
+
+    // Run GPU multiply
+    gpuContext->launch_elementwise_multiply_batch(d_a, d_b, d_c, rows, batch_size);
+
+    // Copy result back
+    std::vector<Eigen::VectorXd> result_c(batch_size);
+    gpuContext->copy_batch_to_host(result_c, d_c, rows, batch_size);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_a);
+    gpuContext->free_batch_vector(d_b);
+    gpuContext->free_batch_vector(d_c);
+
+    // Compare
+    for (int i = 0; i < batch_size; ++i) {
+        assertVectorApprox(result_c[i], expected_c[i], TOL, "Multiply result mismatch for batch " + std::to_string(i), __FILE__, __LINE__);
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_computeGradientsGPU_batch() {
+    std::cout << "-----Running Test: test_computeGradientsGPU_batch-----" << std::endl;
+    total_tests_++;
+
+    // Setup: m=2 neurons, n=3 prev neurons, batch_size=2
+    int m = 2, n = 3, batch_size = 2;
+    std::vector<Eigen::VectorXd> deltas_batch(batch_size), prev_a_batch(batch_size);
+    deltas_batch[0] = Eigen::VectorXd(m); deltas_batch[0] << 0.1, 0.2;
+    deltas_batch[1] = Eigen::VectorXd(m); deltas_batch[1] << 0.3, 0.4;
+    prev_a_batch[0] = Eigen::VectorXd(n); prev_a_batch[0] << 0.5, 0.6, 0.7;
+    prev_a_batch[1] = Eigen::VectorXd(n); prev_a_batch[1] << 0.8, 0.9, 1.0;
+
+    // Expected: weight_grad += deltas * prev_a^T, bias_grad += sum(deltas)
+    Eigen::MatrixXd expected_w_grad(m, n);
+    expected_w_grad.setZero();
+    for (int b = 0; b < batch_size; ++b) {
+        expected_w_grad += deltas_batch[b] * prev_a_batch[b].transpose();
+    }
+    Eigen::VectorXd expected_b_grad(m);
+    expected_b_grad.setZero();
+    for (int b = 0; b < batch_size; ++b) {
+        expected_b_grad += deltas_batch[b];
+    }
+
+    // GPU: Allocate and copy inputs
+    double* d_deltas, * d_prev_a, * d_w_grad, * d_b_grad;
+    gpuContext->allocate_batch_vector(&d_deltas, m, batch_size);
+    gpuContext->allocate_batch_vector(&d_prev_a, n, batch_size);
+    gpuContext->allocate_weights(&d_w_grad, m, n);
+    gpuContext->allocate_biases(&d_b_grad, m);
+    gpuContext->copy_batch_to_device(d_deltas, deltas_batch, false);
+    gpuContext->copy_batch_to_device(d_prev_a, prev_a_batch, false);
+    gpuContext->set_to_zero(d_w_grad, m * n);
+    gpuContext->set_to_zero(d_b_grad, m);
+
+    // Run GPU gradient computation
+    gpuContext->computeGradientsGPU_batch(d_deltas, d_prev_a, d_w_grad, d_b_grad, m, n, batch_size);
+
+    // Copy results back
+    Eigen::MatrixXd result_w_grad(m, n);
+    Eigen::VectorXd result_b_grad(m);
+    gpuContext->copy_weights_to_host(result_w_grad, d_w_grad, m, n);
+    gpuContext->copy_biases_to_host(result_b_grad, d_b_grad, m);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_deltas);
+    gpuContext->free_batch_vector(d_prev_a);
+    gpuContext->free_weights(d_w_grad);
+    gpuContext->free_biases(d_b_grad);
+
+    // Compare
+    assertMatrixApprox(result_w_grad, expected_w_grad, TOL, "Weight grads mismatch", __FILE__, __LINE__);
+    assertVectorApprox(result_b_grad, expected_b_grad, TOL, "Bias grads mismatch", __FILE__, __LINE__);
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_compute_delta_back_batch() {
+    std::cout << "-----Running Test: test_compute_delta_back_batch-----" << std::endl;
+    total_tests_++;
+
+    // Setup: W (n=3 x m=2), delta_next (m=2 x batch_size=2)
+    int m = 2, n = 3, batch_size = 2;
+    Eigen::MatrixXd weights(m, n);
+    weights << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6;
+    std::vector<Eigen::VectorXd> delta_next_batch(batch_size);
+    delta_next_batch[0] = Eigen::VectorXd(m); delta_next_batch[0] << 0.1, 0.2;
+    delta_next_batch[1] = Eigen::VectorXd(m); delta_next_batch[1] << 0.3, 0.4;
+
+    // Expected: delta = W^T * delta_next
+    std::vector<Eigen::VectorXd> expected_delta(batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        expected_delta[b] = weights.transpose() * delta_next_batch[b];
+    }
+
+    // GPU: Allocate and copy inputs
+    double* d_weights, * d_delta_next, * d_delta;
+    gpuContext->allocate_weights(&d_weights, n, m);
+    gpuContext->allocate_batch_vector(&d_delta_next, m, batch_size);
+    gpuContext->allocate_batch_vector(&d_delta, n, batch_size);
+    gpuContext->copy_to_device(d_weights, weights);
+    gpuContext->copy_batch_to_device(d_delta_next, delta_next_batch, false);
+    gpuContext->set_to_zero_batch(d_delta, n, batch_size);
+
+    // Run GPU delta back
+    gpuContext->compute_delta_back_batch(d_weights, d_delta_next, d_delta, m, n, batch_size);
+
+    // Copy result back
+    std::vector<Eigen::VectorXd> result_delta(batch_size);
+    gpuContext->copy_batch_to_host(result_delta, d_delta, n, batch_size);
+
+    // Clean up
+    gpuContext->free_weights(d_weights);
+    gpuContext->free_batch_vector(d_delta_next);
+    gpuContext->free_batch_vector(d_delta);
+
+    // Compare
+    for (int i = 0; i < batch_size; ++i) {
+        assertVectorApprox(result_delta[i], expected_delta[i], TOL, "Delta back mismatch for batch " + std::to_string(i), __FILE__, __LINE__);
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_computeActivationDerivativeGPU_batch() {
+    std::cout << "-----Running Test: test_computeActivationDerivativeGPU_batch-----" << std::endl;
+    total_tests_++;
+
+    // Setup: 2 neurons, batch_size=2, sigmoid activation
+    int vec_size = 2, batch_size = 2;
+    std::vector<Eigen::VectorXd> pre_activations(batch_size);
+    pre_activations[0] = Eigen::VectorXd(vec_size); pre_activations[0] << 0.0, 1.0;
+    pre_activations[1] = Eigen::VectorXd(vec_size); pre_activations[1] << -1.0, 0.5;
+
+    // Expected: sigmoid'(z) = sigmoid(z) * (1 - sigmoid(z))
+    std::vector<Eigen::VectorXd> expected_deriv(batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        expected_deriv[b] = Eigen::VectorXd(vec_size);
+        for (int i = 0; i < vec_size; ++i) {
+            double z = pre_activations[b](i);
+            double sig = 1.0 / (1.0 + std::exp(-z));
+            expected_deriv[b](i) = sig * (1.0 - sig);
+        }
+    }
+
+    // GPU: Allocate and copy inputs
+    double* d_pre_activations, * d_derivatives;
+    gpuContext->allocate_batch_vector(&d_pre_activations, vec_size, batch_size);
+    gpuContext->allocate_batch_vector(&d_derivatives, vec_size, batch_size);
+    gpuContext->copy_batch_to_device(d_pre_activations, pre_activations, false);
+    gpuContext->set_to_zero_batch(d_derivatives, vec_size, batch_size);
+
+    // Run GPU derivative
+    gpuContext->computeActivationDerivativeGPU_batch(d_pre_activations, d_derivatives, vec_size, batch_size, activation_.get());
+
+    // Copy result back
+    std::vector<Eigen::VectorXd> result_deriv(batch_size);
+    gpuContext->copy_batch_to_host(result_deriv, d_derivatives, vec_size, batch_size);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_pre_activations);
+    gpuContext->free_batch_vector(d_derivatives);
+
+    // Compare
+    for (int i = 0; i < batch_size; ++i) {
+        assertVectorApprox(result_deriv[i], expected_deriv[i], TOL, "Sigmoid derivative mismatch for batch " + std::to_string(i), __FILE__, __LINE__);
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_cost_prime_mse_crossent_batched() {
+    std::cout << "-----Running Test: test_cost_prime_mse_crossent_batched-----" << std::endl;
+    total_tests_++;
+
+    // Setup: 2 outputs, batch_size=2
+    int rows = 2, batch_size = 2;
+    std::vector<Eigen::VectorXd> output_batch(batch_size), target_batch(batch_size);
+    output_batch[0] = Eigen::VectorXd(rows); output_batch[0] << 0.8, 0.2;
+    output_batch[1] = Eigen::VectorXd(rows); output_batch[1] << 0.9, 0.1;
+    target_batch[0] = Eigen::VectorXd(rows); target_batch[0] << 0.3, 0.7;
+    target_batch[1] = Eigen::VectorXd(rows); target_batch[1] << 0.4, 0.6;
+
+    // Expected: delta = output - target
+    std::vector<Eigen::VectorXd> expected_delta(batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        expected_delta[b] = output_batch[b] - target_batch[b];
+    }
+
+    // GPU: Allocate and copy inputs
+    double* d_output, * d_target, * d_delta;
+    gpuContext->allocate_batch_vector(&d_output, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_target, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_delta, rows, batch_size);
+    gpuContext->copy_batch_to_device(d_output, output_batch, false);
+    gpuContext->copy_batch_to_device(d_target, target_batch, false);
+    gpuContext->set_to_zero_batch(d_delta, rows, batch_size);
+
+    // Run GPU cost prime
+    gpuContext->cost_prime_mse_crossent_batched(d_output, d_target, d_delta, rows, batch_size);
+
+    // Copy result back
+    std::vector<Eigen::VectorXd> result_delta(batch_size);
+    gpuContext->copy_batch_to_host(result_delta, d_delta, rows, batch_size);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_output);
+    gpuContext->free_batch_vector(d_target);
+    gpuContext->free_batch_vector(d_delta);
+
+    // Compare
+    for (int i = 0; i < batch_size; ++i) {
+        assertVectorApprox(result_delta[i], expected_delta[i], TOL, "Cost prime mismatch for batch " + std::to_string(i), __FILE__, __LINE__);
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_compute_mse_loss_batch_gpu() {
+    std::cout << "-----Running Test: test_compute_mse_loss_batch_gpu-----" << std::endl;
+    total_tests_++;
+
+    // Setup: 2 outputs, batch_size=2
+    int rows = 2, batch_size = 2;
+    std::vector<Eigen::VectorXd> output_batch(batch_size), target_batch(batch_size);
+    output_batch[0] = Eigen::VectorXd(rows); output_batch[0] << 0.8, 0.2;
+    output_batch[1] = Eigen::VectorXd(rows); output_batch[1] << 0.9, 0.1;
+    target_batch[0] = Eigen::VectorXd(rows); target_batch[0] << 0.3, 0.7;
+    target_batch[1] = Eigen::VectorXd(rows); target_batch[1] << 0.4, 0.6;
+
+    // Expected MSE: sum((output - target)^2) / (rows * batch_size)
+    double expected_loss = 0.0;
+    for (int b = 0; b < batch_size; ++b) {
+        Eigen::VectorXd diff = output_batch[b] - target_batch[b];
+        expected_loss += diff.squaredNorm();
+    }
+    expected_loss /= (rows * batch_size);
+
+    // GPU: Allocate and copy inputs
+    double* d_output, * d_target;
+    gpuContext->allocate_batch_vector(&d_output, rows, batch_size);
+    gpuContext->allocate_batch_vector(&d_target, rows, batch_size);
+    gpuContext->copy_batch_to_device(d_output, output_batch, false);
+    gpuContext->copy_batch_to_device(d_target, target_batch, false);
+
+    // Run GPU MSE loss
+    double result_loss = gpuContext->compute_mse_loss_batch_gpu(d_output, d_target, rows, batch_size);
+
+    // Clean up
+    gpuContext->free_batch_vector(d_output);
+    gpuContext->free_batch_vector(d_target);
+
+    // Compare
+    assertApprox(result_loss, expected_loss, TOL, "MSE loss mismatch", __FILE__, __LINE__);
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+
+bool NeuralNetworkTest::test_backprop_gpu_batch() {
+    std::cout << "-----Running Test: test_backprop_gpu_batch-----" << std::endl;
+    total_tests_++;
+
+    // Common setup: Network params and batch data
+    std::vector<Eigen::VectorXd> batch_inputs = {
+        (Eigen::VectorXd(2) << 0.5, 0.3).finished(),
+        (Eigen::VectorXd(2) << 0.7, 0.2).finished()
+    };
+    std::vector<Eigen::VectorXd> batch_targets = {
+        (Eigen::VectorXd(2) << 0.1, 0.9).finished(),
+        (Eigen::VectorXd(2) << 0.8, 0.4).finished()
+    };
+    int batch_size = batch_inputs.size();
+
+    // Test for MSE and CE loss
+    std::vector<Network::LossType> loss_types = { Network::LossType::MSE, Network::LossType::CROSS_ENTROPY };
+    for (const auto& loss_type : loss_types) {
+        std::cout << "Testing with " << (loss_type == Network::LossType::MSE ? "MSE" : "Cross-Entropy") << " loss" << std::endl;
+
+        // Initialize networks
+        std::unique_ptr<Network> net_cpu = std::make_unique<Network>(network_sizes_, 0.0, loss_type, neuron_type_, cpuContext.get(), seed_, 2);
+        std::unique_ptr<Network> net_gpu = std::make_unique<Network>(network_sizes_, 0.0, loss_type, neuron_type_, gpuContext.get(), seed_, 2);
+
+        // Sync weights and biases
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            auto& cpu_layer = net_cpu->get_layers()[i];
+            net_gpu->set_layer_weights(i, cpu_layer->get_weights());
+            net_gpu->set_layer_biases(i, cpu_layer->get_biases());
+        }
+
+        // GPU: Forward and backprop batch
+        net_gpu->init_batch_buffers(batch_size);
+        std::vector<Eigen::VectorXd> batch_outputs(batch_size);
+        net_gpu->feedforward_gpu_batch(batch_inputs, batch_outputs);
+        double batch_loss_gpu;
+        net_gpu->backprop_gpu_batch(batch_targets, batch_loss_gpu);
+
+        // CPU: Single-example forward and backprop, accumulate grads
+        std::vector<Eigen::MatrixXd> cpu_weight_grads(network_sizes_.size() - 1);
+        std::vector<Eigen::VectorXd> cpu_bias_grads(network_sizes_.size() - 1);
+        double batch_loss_cpu = 0.0;
+        size_t total_n = batch_size;
+
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            cpu_weight_grads[i] = Eigen::MatrixXd::Zero(network_sizes_[i + 1], network_sizes_[i]);
+            cpu_bias_grads[i] = Eigen::VectorXd::Zero(network_sizes_[i + 1]);
+        }
+
+        for (int i = 0; i < batch_size; ++i) {
+            Eigen::VectorXd output = net_cpu->feedforward_cpu(batch_inputs[i]);
+            auto [cpu_nabla_b, cpu_nabla_w] = net_cpu->backprop_cpu(batch_inputs[i], batch_targets[i], total_n);
+
+            for (size_t l = 0; l < cpu_nabla_w.size(); ++l) {
+                cpu_weight_grads[l] += cpu_nabla_w[l];
+                cpu_bias_grads[l] += cpu_nabla_b[l];
+            }
+
+            // Compute loss per example
+            if (loss_type == Network::LossType::MSE) {
+                Eigen::VectorXd diff = output - batch_targets[i];
+                batch_loss_cpu += diff.squaredNorm() / network_sizes_.back();
+            }
+            else {
+                for (int j = 0; j < output.size(); ++j) {
+                    double a = output(j), y = batch_targets[i](j);
+                    batch_loss_cpu += -y * std::log(std::max(a, 1e-10)) - (1.0 - y) * std::log(std::max(1.0 - a, 1e-10));
+                }
+                batch_loss_cpu /= network_sizes_.back();
+            }
+        }
+        batch_loss_cpu /= batch_size;
+
+        // Copy GPU accumulated grads to host
+        std::vector<Eigen::MatrixXd> gpu_weight_grads(network_sizes_.size() - 1);
+        std::vector<Eigen::VectorXd> gpu_bias_grads(network_sizes_.size() - 1);
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            int rows = network_sizes_[i + 1], cols = network_sizes_[i];
+            gpu_weight_grads[i] = Eigen::MatrixXd(rows, cols);
+            gpu_bias_grads[i] = Eigen::VectorXd(rows);
+            gpuContext->copy_weights_to_host(gpu_weight_grads[i], net_gpu->get_accumulate_weight_grads()[i], rows, cols);
+            gpuContext->copy_biases_to_host(gpu_bias_grads[i], net_gpu->get_accumulate_bias_grads()[i], rows);
+        }
+
+        // Compare gradients
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            assertMatrixApprox(cpu_weight_grads[i], gpu_weight_grads[i], TOL, "Weight grads mismatch at layer " + std::to_string(i) + " for " + (loss_type == Network::LossType::MSE ? "MSE" : "CE"), __FILE__, __LINE__);
+            assertVectorApprox(cpu_bias_grads[i], gpu_bias_grads[i], TOL, "Bias grads mismatch at layer " + std::to_string(i) + " for " + (loss_type == Network::LossType::MSE ? "MSE" : "CE"), __FILE__, __LINE__);
+        }
+
+        // Compare loss (skip for CE since not implemented)
+        if (loss_type == Network::LossType::MSE) {
+            //assertApprox(batch_loss_cpu, batch_loss_gpu, TOL, "Batch loss mismatch for MSE", __FILE__, __LINE__);
+        } // else { assertApprox(batch_loss_cpu, batch_loss_gpu, TOL, "Batch loss mismatch for CE", __FILE__, __LINE__); }
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+bool NeuralNetworkTest::test_update_mini_batch_batch() {
+    std::cout << "-----Running Test: test_update_mini_batch_batch-----" << std::endl;
+    total_tests_++;
+
+    // Common setup: Batch data and parameters
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> mini_batch = {
+        { (Eigen::VectorXd(2) << 0.5, 0.3).finished(), (Eigen::VectorXd(2) << 0.1, 0.9).finished() },
+        { (Eigen::VectorXd(2) << 0.7, 0.2).finished(), (Eigen::VectorXd(2) << 0.8, 0.4).finished() }
+    };
+    int batch_size = mini_batch.size();
+    double eta = 0.1;  // Learning rate
+    double lambda = 0.1;  // L2 regularization
+    size_t n = 4;  // Total dataset size (for regularization scaling)
+
+    // Test for MSE and CE loss
+    std::vector<Network::LossType> loss_types = { Network::LossType::MSE, Network::LossType::CROSS_ENTROPY };
+    for (const auto& loss_type : loss_types) {
+        std::cout << "Testing with " << (loss_type == Network::LossType::MSE ? "MSE" : "Cross-Entropy") << " loss" << std::endl;
+
+        // Initialize networks
+        std::unique_ptr<Network> net_cpu = std::make_unique<Network>(network_sizes_, lambda, loss_type, neuron_type_, cpuContext.get(), seed_, 2);
+        std::unique_ptr<Network> net_gpu = std::make_unique<Network>(network_sizes_, lambda, loss_type, neuron_type_, gpuContext.get(), seed_, 2);
+
+        // Sync initial weights and biases
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            auto& cpu_layer = net_cpu->get_layers()[i];
+            net_gpu->set_layer_weights(i, cpu_layer->get_weights());
+            net_gpu->set_layer_biases(i, cpu_layer->get_biases());
+        }
+
+        // Save initial weights/biases for CPU (to restore after each example)
+        std::vector<Eigen::MatrixXd> initial_weights(network_sizes_.size() - 1);
+        std::vector<Eigen::VectorXd> initial_biases(network_sizes_.size() - 1);
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            initial_weights[i] = net_cpu->get_layers()[i]->get_weights();
+            initial_biases[i] = net_cpu->get_layers()[i]->get_biases();
+        }
+
+        // CPU: Run update_mini_batch for each example sequentially
+        double cpu_loss = 0.0;
+        for (int i = 0; i < batch_size; ++i) {
+            // Restore initial weights/biases
+            for (size_t l = 0; l < network_sizes_.size() - 1; ++l) {
+                net_cpu->set_layer_weights(l, initial_weights[l]);
+                net_cpu->set_layer_biases(l, initial_biases[l]);
+            }
+            net_cpu->update_mini_batch({ mini_batch[i] }, eta, n);
+            Eigen::VectorXd output = net_cpu->feedforward_cpu(mini_batch[i].first);
+            if (loss_type == Network::LossType::MSE) {
+                Eigen::VectorXd diff = output - mini_batch[i].second;
+                cpu_loss += diff.squaredNorm() / network_sizes_.back();
+            }
+            else {
+                for (int j = 0; j < output.size(); ++j) {
+                    double a = output(j), y = mini_batch[i].second(j);
+                    cpu_loss += -y * std::log(std::max(a, 1e-10)) - (1.0 - y) * std::log(std::max(1.0 - a, 1e-10));
+                }
+                cpu_loss /= network_sizes_.back();
+            }
+        }
+        cpu_loss /= batch_size;
+
+        // GPU: Run update_mini_batch_batch
+        net_gpu->init_batch_buffers(batch_size);
+        double gpu_loss = net_gpu->update_mini_batch_batch(mini_batch, eta, n);
+
+        // Compare final weights and biases
+        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
+            auto& cpu_layer = net_cpu->get_layers()[i];
+            auto& gpu_layer = net_gpu->get_layers()[i];
+            assertMatrixApprox(cpu_layer->get_weights(), gpu_layer->get_weights(), TOL,
+                "Weight mismatch at layer " + std::to_string(i) + " for " + (loss_type == Network::LossType::MSE ? "MSE" : "CE"), __FILE__, __LINE__);
+            assertVectorApprox(cpu_layer->get_biases(), gpu_layer->get_biases(), TOL,
+                "Bias mismatch at layer " + std::to_string(i) + " for " + (loss_type == Network::LossType::MSE ? "MSE" : "CE"), __FILE__, __LINE__);
+        }
+
+        // Compare loss (skip for CE since not implemented)
+        if (loss_type == Network::LossType::MSE) {
+          //assertApprox(cpu_loss, gpu_loss, TOL, "Batch loss mismatch for MSE", __FILE__, __LINE__);
+        } // else { assertApprox(cpu_loss, gpu_loss, TOL, "Batch loss mismatch for CE", __FILE__, __LINE__); }
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
 
 bool NeuralNetworkTest::runAllTests()
 {
@@ -818,8 +1350,18 @@ bool NeuralNetworkTest::runAllTests()
     //testUpdateMiniBatch();
     //customtest();
 
-    //testBatchFunctionsGPU();
-    test_feedforward_gpu_batch();
+    //test_launch_elementwise_subtract_batch();
+    //test_launch_elementwise_multiply_batch();
+    //test_computeGradientsGPU_batch();
+    //test_compute_delta_back_batch();
+    //test_computeActivationDerivativeGPU_batch();
+    //test_cost_prime_mse_crossent_batched();
+    //test_compute_mse_loss_batch_gpu();
+
+    //testBatchFunctionsGPU_context();
+    //test_feedforward_gpu_batch();
+    //test_backprop_gpu_batch();
+    test_update_mini_batch_batch();
 
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
@@ -828,4 +1370,3 @@ bool NeuralNetworkTest::runAllTests()
 bool NeuralNetworkTest::customtest() {
     return true;
 }
-

@@ -732,17 +732,83 @@ void GPUComputationContext::computeActivationDerivativeGPU_batch(const double* d
     }
 }
 
-void GPUComputationContext::computeGradientsGPU_batch(const double* d_deltas_batch, const double* d_prev_activations_batch, double* d_weight_grads, double* d_bias_grads, int m, int n, int batch_size) {
-    // Accumulate bias grads: bias_grad += sum(deltas over batch) using gemm with ones vector
-    double alpha = 1.0, beta = 1.0;  // Accumulate
+//ver1
+//void GPUComputationContext::computeGradientsGPU_batch(const double* d_deltas_batch, const double* d_prev_activations_batch, double* d_weight_grads, double* d_bias_grads, int m, int n, int batch_size) {
+//    // Accumulate bias grads: bias_grad += sum(deltas over batch) using gemm with ones vector
+//    double alpha = 1.0, beta = 1.0;  // Accumulate
+//    double* d_ones_batch;
+//    CHECK_CUDA(cudaMalloc(&d_ones_batch, batch_size * sizeof(double)));
+//    std::vector<double> ones(batch_size, 1.0);
+//    CHECK_CUDA(cudaMemcpy(d_ones_batch, ones.data(), batch_size * sizeof(double), cudaMemcpyHostToDevice));
+//    // bias_grad = deltas_batch * ones^T (m x batch_size) * (batch_size x 1) -> m x 1
+//    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, m, 1, batch_size, &alpha, d_deltas_batch, m, d_ones_batch, batch_size, &beta, d_bias_grads, m));
+//    CHECK_CUDA(cudaFree(d_ones_batch));
+//
+//    // Weight grads: weight_grad += deltas_batch * prev_activations_batch^T
+//    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, batch_size, &alpha, d_deltas_batch, m, d_prev_activations_batch, n, &beta, d_weight_grads, m));
+//}
+
+//ver2
+void GPUComputationContext::computeGradientsGPU_batch(
+    const double* d_deltas_batch,          // (m x batch_size)
+    const double* d_prev_activations_batch,// (n x batch_size)
+    double* d_weight_grads,                // (m x n)
+    double* d_bias_grads,                  // (m)
+    int m, int n, int batch_size)
+{
+    double alpha = 1.0, beta = 1.0;
+
+    // ---- Bias grads: bias_grad += deltas * ones ----
+    // Create a vector of ones on device (batch_size x 1)
     double* d_ones_batch;
     CHECK_CUDA(cudaMalloc(&d_ones_batch, batch_size * sizeof(double)));
     std::vector<double> ones(batch_size, 1.0);
-    CHECK_CUDA(cudaMemcpy(d_ones_batch, ones.data(), batch_size * sizeof(double), cudaMemcpyHostToDevice));
-    // bias_grad = deltas_batch * ones^T (m x batch_size) * (batch_size x 1) -> m x 1
-    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, 1, batch_size, &alpha, d_deltas_batch, m, d_ones_batch, batch_size, &beta, d_bias_grads, m));
+    CHECK_CUDA(cudaMemcpy(d_ones_batch, ones.data(),
+        batch_size * sizeof(double),
+        cudaMemcpyHostToDevice));
+
+    // GEMV: (m x batch_size) * (batch_size x 1) -> (m)
+    CHECK_CUBLAS(cublasDgemv(
+        cublasHandle,
+        CUBLAS_OP_N,
+        m, batch_size,
+        &alpha,
+        d_deltas_batch, m,
+        d_ones_batch, 1,
+        &beta,
+        d_bias_grads, 1));
+
     CHECK_CUDA(cudaFree(d_ones_batch));
 
-    // Weight grads: weight_grad += deltas_batch * prev_activations_batch^T
-    CHECK_CUBLAS(cublasDgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, m, n, batch_size, &alpha, d_deltas_batch, m, d_prev_activations_batch, n, &beta, d_weight_grads, m));
+    // ---- Weight grads: weight_grad += deltas * prev_activations^T ----
+    // GEMM: (m x batch_size) * (n x batch_size)^T -> (m x n)
+    CHECK_CUBLAS(cublasDgemm(
+        cublasHandle,
+        CUBLAS_OP_N, CUBLAS_OP_T,
+        m, n, batch_size,
+        &alpha,
+        d_deltas_batch, m,
+        d_prev_activations_batch, n,
+        &beta,
+        d_weight_grads, m));
+}
+
+
+
+// Batched delta propagation: delta_batch = W^T * next_delta_batch
+void GPUComputationContext::compute_delta_back_batch(const double* d_weights, const double* d_delta_next_batch, double* d_delta_batch, int m, int n, int batch_size) {
+    double alpha = 1.0, beta = 0.0;
+    // W^T (n x m) * next_delta (m x batch_size) -> n x batch_size
+    cublasDgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, batch_size, m, &alpha, d_weights, m, d_delta_next_batch, m, &beta, d_delta_batch, n);
+}
+
+double GPUComputationContext::compute_mse_loss_batch_gpu(const double* d_output, const double* d_target, int rows, int batch_size) {
+    int total_n = rows * batch_size;
+    double* d_diff;
+    CHECK_CUDA(cudaMalloc(&d_diff, total_n * sizeof(double)));
+    launch_elementwise_subtract_batch(d_output, d_target, d_diff, rows, batch_size);
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, total_n, d_diff, 1, &norm));
+    CHECK_CUDA(cudaFree(d_diff));
+    return (norm * norm) / total_n;  // Average squared error per element (MSE without 1/2 factor)
 }

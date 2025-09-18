@@ -1,0 +1,6 @@
+
+1-
+void GPUComputationContext::computeGradientsGPU_batch:
+you should allocate d_ones_batch once and reuse it (instead of malloc/free per call).
+
+2- Compute batch loss in  Network::backprop_gpu_batch

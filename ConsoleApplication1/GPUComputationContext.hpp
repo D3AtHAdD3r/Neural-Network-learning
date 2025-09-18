@@ -209,6 +209,8 @@ public:
     void computeActivationDerivativeGPU_batch(const double* d_pre_activations, double* d_derivatives, int vec_size, int batch_size, const Activation* activation);
 
     void cost_prime_mse_crossent_batched(const double* d_output, const double* d_target, double* d_delta, int rows, int batch_size);
+
+    double compute_mse_loss_batch_gpu(const double* d_output, const double* d_target, int rows, int batch_size);  // Beginner note: Computes average MSE per element over batch (sum sq errors / (rows * batch_size)).
 };
 
 

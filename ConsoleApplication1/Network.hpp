@@ -58,14 +58,6 @@ public:
     std::pair<int, double> evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
 
 public:
-    //Batched funcs
-    // Batched feedforward on GPU: Processes a batch of inputs
-    // batch_inputs: Vector of input vectors (size <= allocated_batch_size_)
-    // batch_outputs: Output vector to store results (resized to batch_inputs.size())
-    void feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs);
-    double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
-    void init_batch_buffers(int mini_batch_size);
-public:
     //Debug
     void display_biases() const;
     void display_weights() const;
@@ -133,6 +125,26 @@ private:
     double* d_batch_main_input = nullptr;       // GPU buffer for main batch input (input_size * allocated_batch_size_)
     std::vector<double*> d_batch_pre_activations;  // Per-layer pre-activations (neurons * allocated_batch_size_)
     std::vector<double*> d_batch_activations;      // Per-layer activations (neurons * allocated_batch_size_)
+
+    //phase 5.1 addons
+    std::vector<double*> d_batch_deltas;  // Per-layer batched deltas (neurons x allocated_batch_size_)
+    double* d_batch_targets = nullptr;    // Batched targets (output_size x allocated_batch_size_)
+    double* d_temp_deriv_batch = nullptr; // Temporary buffer for batched derivatives
+
+ public:
+     //Batched funcs
+     // Batched feedforward on GPU: Processes a batch of inputs
+     // batch_inputs: Vector of input vectors (size <= allocated_batch_size_)
+     // batch_outputs: Output vector to store results (resized to batch_inputs.size())
+     void feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs);
+     double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
+     void init_batch_buffers(int mini_batch_size);
+     // Batched backprop: Assumes feedforward_gpu_batch was run; accumulates grads, returns avg loss
+     void backprop_gpu_batch(const std::vector<Eigen::VectorXd>& batch_targets, double& batch_loss);
+
+public:
+    std::vector<double*> get_accumulate_weight_grads() const { return accumulate_weight_grads; }
+    std::vector<double*> get_accumulate_bias_grads() const { return accumulate_bias_grads; }
 };
 
 #endif
