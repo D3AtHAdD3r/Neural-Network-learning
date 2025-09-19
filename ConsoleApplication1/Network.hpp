@@ -87,6 +87,7 @@ private:
     //Helpers
     bool is_correct_prediction(const Eigen::VectorXd& output, int label);
     bool is_correct_prediction(const Eigen::VectorXd& output, const Eigen::VectorXd& target);
+    Eigen::VectorXd label_to_one_hot(int label) const;
 
 private:
     int num_layers;                                 ///< Number of layers
@@ -133,14 +134,16 @@ private:
 
  public:
      //Batched funcs
+     void init_batch_buffers(int mini_batch_size);
      // Batched feedforward on GPU: Processes a batch of inputs
      // batch_inputs: Vector of input vectors (size <= allocated_batch_size_)
      // batch_outputs: Output vector to store results (resized to batch_inputs.size())
      void feedforward_gpu_batch(const std::vector<Eigen::VectorXd>& batch_inputs, std::vector<Eigen::VectorXd>& batch_outputs);
-     double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
-     void init_batch_buffers(int mini_batch_size);
      // Batched backprop: Assumes feedforward_gpu_batch was run; accumulates grads, returns avg loss
      void backprop_gpu_batch(const std::vector<Eigen::VectorXd>& batch_targets, double& batch_loss);
+     double update_mini_batch_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n);
+     std::pair<int, double> evaluate_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n);
+     std::pair<int, double> evaluate_batch(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n);
 
 public:
     std::vector<double*> get_accumulate_weight_grads() const { return accumulate_weight_grads; }

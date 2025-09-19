@@ -211,7 +211,8 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
         batch_gradient_norm /= num_batches;
        
         if (verbose && test_data) {
-            auto [correct, total_loss] = evaluate(*test_data, n);
+            auto[correct, total_loss] = is_gpu_context_ ? evaluate_batch(*test_data, n) : evaluate(*test_data, n);
+
             double accuracy = (n_test > 0) ? (correct * 100.0 / n_test) : 0.0;
             double loss = (n_test > 0) ? total_loss / n_test : 0.0;
             std::cout << std::fixed << std::setprecision(4);
@@ -226,7 +227,7 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
             std::cout << std::endl;
         }
         else if (test_data) {
-            auto [correct, total_loss] = evaluate(*test_data, n);
+            auto [correct, total_loss] = is_gpu_context_ ? evaluate_batch(*test_data, n) : evaluate(*test_data, n);
             std::cout << "Epoch " << j << ": Correct Predictions = " << correct << "/" << n_test << std::endl;
         }
         else {
@@ -426,76 +427,6 @@ std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::Vect
     
 }
 
-
-std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n) {
-    int correct = 0;
-    double total_loss = 0.0;
-    double weight_norm = 0.0;
-
-    if (is_gpu_context_) {
-        for (const auto& layer : layers) {
-            weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
-        }
-
-        for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward_gpu(x);
-
-            if (is_correct_prediction(output, y))
-                ++correct;
-
-            //TODO: add a switch here
-            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-                total_loss += contextGPU_->compute_mse_lossGPU(output, y);
-            }
-            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-                total_loss += contextGPU_->compute_cross_entropy_lossGPU(output, y);
-            }
-            else {
-                throw std::runtime_error("Unsupported loss type");
-            }
-        }
-
-        if (lambda > 0.0 && n > 0) {
-            total_loss += 0.5 * lambda * weight_norm / n;
-        }
-
-        last_test_loss = total_loss;
-        return { correct, total_loss };
-    }
-    else {
-        for (const auto& layer : layers) {
-            weight_norm += contextCPU_->compute_squared_normCPU(layer->get_weights());
-        }
-
-        for (const auto& [x, y] : test_data) {
-            Eigen::VectorXd output = feedforward_cpu(x);
-
-            if (is_correct_prediction(output, y))
-                ++correct;
-
-            //TODO: add a switch here
-            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-                total_loss += contextCPU_->compute_mse_lossCPU(output, y);
-            }
-            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-                total_loss += contextCPU_->compute_cross_entropy_lossCPU(output, y);
-            }
-            else {
-                throw std::runtime_error("Unsupported loss type");
-            }
-        }
-
-        if (lambda > 0.0 && n > 0) {
-            total_loss += 0.5 * lambda * weight_norm / n;
-        }
-
-        last_test_loss = total_loss;
-        return { correct, total_loss };
-    }
-    
-}
-
-
 /**
  * @brief Computes the derivative of the cost function w.r.t. output activations.
  * @param output_activations Output activations of the final layer
@@ -677,6 +608,12 @@ bool Network::is_correct_prediction(const Eigen::VectorXd& output, const Eigen::
     output.maxCoeff(&predicted);
     target.maxCoeff(&actual);
     return predicted == actual;
+}
+
+Eigen::VectorXd Network::label_to_one_hot(int label) const {
+    Eigen::VectorXd vec = Eigen::VectorXd::Zero(sizes.back());
+    vec(label) = 1.0;
+    return vec;
 }
 
 
@@ -1021,4 +958,215 @@ double Network::update_mini_batch_batch(
     // Compute gradient norm (already accumulated)
     return contextGPU_->compute_gradient_norm_gpu(accumulate_weight_grads, accumulate_bias_grads,
         weight_rows, weight_cols, bias_sizes, batch_size);
+}
+
+std::pair<int, double> Network::evaluate(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n) {
+    int correct = 0;
+    double total_loss = 0.0;
+    double weight_norm = 0.0;
+
+    if (is_gpu_context_) {
+        for (const auto& layer : layers) {
+            weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
+        }
+
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward_gpu(x);
+
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            //TODO: add a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextGPU_->compute_mse_lossGPU(output, y);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextGPU_->compute_cross_entropy_lossGPU(output, y);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n;
+        }
+
+        last_test_loss = total_loss;
+        return { correct, total_loss };
+    }
+    else {
+        for (const auto& layer : layers) {
+            weight_norm += contextCPU_->compute_squared_normCPU(layer->get_weights());
+        }
+
+        for (const auto& [x, y] : test_data) {
+            Eigen::VectorXd output = feedforward_cpu(x);
+
+            if (is_correct_prediction(output, y))
+                ++correct;
+
+            //TODO: add a switch here
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextCPU_->compute_mse_lossCPU(output, y);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextCPU_->compute_cross_entropy_lossCPU(output, y);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+
+        if (lambda > 0.0 && n > 0) {
+            total_loss += 0.5 * lambda * weight_norm / n;
+        }
+
+        last_test_loss = total_loss;
+        return { correct, total_loss };
+    }
+
+}
+
+// Updated evaluate_batch overload for VectorXd targets in Network.cpp
+// Changes: Added sub-batching to handle large test_data > allocated_batch_size_
+// Computed weight_norm once outside loops
+// No other errors found; loss computation uses host-side loops (inefficient but correct)
+// TODO: Optimize with batched GPU loss computation in future phases
+std::pair<int, double> Network::evaluate_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& test_data, size_t n) {
+    int correct = 0;
+    double total_loss = 0.0;
+    double weight_norm = 0.0;
+
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    size_t test_size = test_data.size();
+    if (test_size == 0) {
+        throw std::runtime_error("test data size zero");
+    }
+
+    if (!batch_buffers_allocated_) {
+        init_batch_buffers(max_batch_size_);
+    }
+
+    // Compute weight_norm once
+    for (const auto& layer : layers) {
+        weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
+    }
+
+    int max_sub_batch = allocated_batch_size_;
+
+    for (size_t start = 0; start < test_size; start += max_sub_batch) {
+        size_t sub_size = std::min(static_cast<size_t>(max_sub_batch), test_size - start);
+    
+        // Extract sub-batch data
+        std::vector<Eigen::VectorXd> sub_inputs(sub_size);
+        std::vector<Eigen::VectorXd> sub_targets(sub_size);
+        for (size_t i = 0; i < sub_size; ++i) {
+            sub_inputs[i] = test_data[start + i].first;
+            sub_targets[i] = test_data[start + i].second;
+        }
+
+        // Forward pass on sub-batch
+        std::vector<Eigen::VectorXd> sub_outputs;
+        feedforward_gpu_batch(sub_inputs, sub_outputs);
+
+        // Accumulate correct and loss
+        for (size_t i = 0; i < sub_size; ++i) {
+            if (is_correct_prediction(sub_outputs[i], sub_targets[i])) {
+                ++correct;
+            }
+
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextGPU_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextGPU_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+    }
+
+    if (lambda > 0.0 && n > 0) {
+        total_loss += 0.5 * lambda * weight_norm / n;
+    }
+
+    last_test_loss = total_loss;
+    return { correct, total_loss };
+}
+
+// Updated evaluate_batch overload for int labels in Network.cpp
+// Changes: Added sub-batching similar to above
+// Used label_to_one_hot helper for targets
+// Used int version of is_correct_prediction for efficiency (avoids unnecessary argmax on one-hot)
+// No other errors found; consistent with the other overload
+std::pair<int, double> Network::evaluate_batch(const std::vector<std::pair<Eigen::VectorXd, int>>& test_data, size_t n) {
+    int correct = 0;
+    double total_loss = 0.0;
+    double weight_norm = 0.0;
+
+    if (!is_gpu_context_) {
+        throw std::runtime_error("Unsupported computation context type");
+    }
+
+    size_t test_size = test_data.size();
+    if (test_size == 0) {
+        throw std::runtime_error("test data size zero");
+    }
+
+    if (!batch_buffers_allocated_) {
+        init_batch_buffers(max_batch_size_);
+    }
+
+    // Compute weight_norm once
+    for (const auto& layer : layers) {
+        weight_norm += contextGPU_->compute_squared_normGPU(layer->get_weights());
+    }
+
+    int max_sub_batch = allocated_batch_size_;
+    for (size_t start = 0; start < test_size; start += max_sub_batch) {
+        size_t sub_size = std::min(static_cast<size_t>(max_sub_batch), test_size - start);
+
+        // Extract sub-batch data
+        std::vector<Eigen::VectorXd> sub_inputs(sub_size);
+        std::vector<Eigen::VectorXd> sub_targets(sub_size);
+        std::vector<int> sub_labels(sub_size);
+        for (size_t i = 0; i < sub_size; ++i) {
+            sub_inputs[i] = test_data[start + i].first;
+            sub_labels[i] = test_data[start + i].second;
+            sub_targets[i] = label_to_one_hot(sub_labels[i]);
+        }
+
+        // Forward pass on sub-batch
+        std::vector<Eigen::VectorXd> sub_outputs;
+        feedforward_gpu_batch(sub_inputs, sub_outputs);
+
+        // Accumulate correct and loss
+        for (size_t i = 0; i < sub_size; ++i) {
+            if (is_correct_prediction(sub_outputs[i], sub_labels[i])) {
+                ++correct;
+            }
+
+            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                total_loss += contextGPU_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
+            }
+            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                total_loss += contextGPU_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
+            }
+            else {
+                throw std::runtime_error("Unsupported loss type");
+            }
+        }
+    }
+
+    if (lambda > 0.0 && n > 0) {
+        total_loss += 0.5 * lambda * weight_norm / n;
+    }
+
+    last_test_loss = total_loss;
+    return { correct, total_loss };
 }

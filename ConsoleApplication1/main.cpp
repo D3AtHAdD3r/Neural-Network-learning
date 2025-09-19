@@ -50,7 +50,7 @@ void printNetworkParams(const std::string& label, const std::vector<int>& sizes,
     std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
 }
 
-int main333() {
+int main() {
     std::cout << "-----------program started----------\n";
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -58,7 +58,7 @@ int main333() {
     std::string test_images = "data/t10k-images-idx3-ubyte";
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
-    auto training_data = load_mnist_training(train_images, train_labels, 7000);
+    auto training_data = load_mnist_training(train_images, train_labels, 5000);
     auto test_data = load_mnist_test(test_images, test_labels, 3000);
 
     CPUComputationContext cpuContext;
@@ -76,15 +76,15 @@ int main333() {
     double eta = 1.5;
 
     // Display network parameters
-    //printNetworkParams("CPU", sizes, l2strength, loss, neuron);
+    printNetworkParams("CPU", sizes, l2strength, loss, neuron);
     printNetworkParams("GPU", sizes, l2strength, loss, neuron);
 
-    /*std::cout << "Training with Cpu context...\n";
+    std::cout << "Training with Cpu context...\n";
     auto cpu_start = std::chrono::high_resolution_clock::now();
     netCPU.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end - cpu_start;
-    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";*/
+    std::cout << "CPU training completed in " << cpu_duration.count() << " seconds.\n";
 
     std::cout << "Training with Gpu context...\n";
     auto gpu_start = std::chrono::high_resolution_clock::now();
@@ -98,7 +98,7 @@ int main333() {
 
 
 
-int main() {
+int main66() {
 
     // Default parameters
     NeuralNetworkTest tester;
