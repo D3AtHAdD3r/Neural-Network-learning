@@ -162,6 +162,8 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <CudaCompile Include="GPUPass.cpp" />
+    <CudaCompile Include="cuda_kernels.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="CPUComputationContext.cpp" />
     <CudaCompile Include="GPUComputationContext.cpp" />
@@ -193,7 +195,9 @@
     <ClInclude Include="Activation.hpp" />
     <ClInclude Include="ComputationContext.hpp" />
     <ClInclude Include="CPUComputationContext.hpp" />
+    <ClInclude Include="cuda_kernels.h" />
     <ClInclude Include="GPUComputationContext.hpp" />
+    <ClInclude Include="GPUPass.hpp" />
     <ClInclude Include="Layer.hpp" />
     <ClInclude Include="LegacyFuncs.h" />
     <ClInclude Include="mnistLoader.h" />

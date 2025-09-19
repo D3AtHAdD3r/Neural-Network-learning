@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Net-Batch">
+      <UniqueIdentifier>{a88f4868-2204-4d06-8838-7e7934973e10}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -74,6 +77,12 @@
     <ClInclude Include="GPUComputationContext.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="GPUPass.hpp">
+      <Filter>Net-Batch</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda_kernels.h">
+      <Filter>Net-Batch</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="TODO.txt" />
@@ -86,6 +95,12 @@
     </CudaCompile>
     <CudaCompile Include="GPUComputationContext.cpp">
       <Filter>Source Files</Filter>
+    </CudaCompile>
+    <CudaCompile Include="GPUPass.cpp">
+      <Filter>Net-Batch</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda_kernels.cpp">
+      <Filter>Net-Batch</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
