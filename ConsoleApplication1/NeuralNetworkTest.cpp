@@ -1253,6 +1253,7 @@ bool NeuralNetworkTest::test_backprop_gpu_batch() {
     return true;
 }
 
+//**
 bool NeuralNetworkTest::test_update_mini_batch_batch() {
     std::cout << "-----Running Test: test_update_mini_batch_batch-----" << std::endl;
     total_tests_++;
@@ -1264,11 +1265,12 @@ bool NeuralNetworkTest::test_update_mini_batch_batch() {
     };
     int batch_size = mini_batch.size();
     double eta = 0.1;  // Learning rate
-    double lambda = 0.1;  // L2 regularization
+    double lambda = 0.01;  // L2 regularization
     size_t n = 4;  // Total dataset size (for regularization scaling)
 
     // Test for MSE and CE loss
     std::vector<Network::LossType> loss_types = { Network::LossType::MSE, Network::LossType::CROSS_ENTROPY };
+
     for (const auto& loss_type : loss_types) {
         std::cout << "Testing with " << (loss_type == Network::LossType::MSE ? "MSE" : "Cross-Entropy") << " loss" << std::endl;
 
@@ -1283,41 +1285,15 @@ bool NeuralNetworkTest::test_update_mini_batch_batch() {
             net_gpu->set_layer_biases(i, cpu_layer->get_biases());
         }
 
-        // Save initial weights/biases for CPU (to restore after each example)
-        std::vector<Eigen::MatrixXd> initial_weights(network_sizes_.size() - 1);
-        std::vector<Eigen::VectorXd> initial_biases(network_sizes_.size() - 1);
-        for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
-            initial_weights[i] = net_cpu->get_layers()[i]->get_weights();
-            initial_biases[i] = net_cpu->get_layers()[i]->get_biases();
-        }
-
-        // CPU: Run update_mini_batch for each example sequentially
         double cpu_loss = 0.0;
-        for (int i = 0; i < batch_size; ++i) {
-            // Restore initial weights/biases
-            for (size_t l = 0; l < network_sizes_.size() - 1; ++l) {
-                net_cpu->set_layer_weights(l, initial_weights[l]);
-                net_cpu->set_layer_biases(l, initial_biases[l]);
-            }
-            net_cpu->update_mini_batch({ mini_batch[i] }, eta, n);
-            Eigen::VectorXd output = net_cpu->feedforward_cpu(mini_batch[i].first);
-            if (loss_type == Network::LossType::MSE) {
-                Eigen::VectorXd diff = output - mini_batch[i].second;
-                cpu_loss += diff.squaredNorm() / network_sizes_.back();
-            }
-            else {
-                for (int j = 0; j < output.size(); ++j) {
-                    double a = output(j), y = mini_batch[i].second(j);
-                    cpu_loss += -y * std::log(std::max(a, 1e-10)) - (1.0 - y) * std::log(std::max(1.0 - a, 1e-10));
-                }
-                cpu_loss /= network_sizes_.back();
-            }
-        }
-        cpu_loss /= batch_size;
-
-        // GPU: Run update_mini_batch_batch
+        double gpu_loss = 0.0;
+        net_cpu->update_mini_batch(mini_batch , eta, n);
         net_gpu->init_batch_buffers(batch_size);
-        double gpu_loss = net_gpu->update_mini_batch_batch(mini_batch, eta, n);
+        gpu_loss = net_gpu->update_mini_batch_batch(mini_batch, eta, n);
+
+        // compute cpu batch loss, manually, since its not calculated in  net_cpu->update_mini_batch() yet.
+        // gpu loss in net_gpu->update_mini_batch_batch() is also stubbed to 0.0. 
+        // so defer loss comparison to later phase.
 
         // Compare final weights and biases
         for (size_t i = 0; i < network_sizes_.size() - 1; ++i) {
@@ -1331,7 +1307,7 @@ bool NeuralNetworkTest::test_update_mini_batch_batch() {
 
         // Compare loss (skip for CE since not implemented)
         if (loss_type == Network::LossType::MSE) {
-          //assertApprox(cpu_loss, gpu_loss, TOL, "Batch loss mismatch for MSE", __FILE__, __LINE__);
+            //assertApprox(cpu_loss, gpu_loss, TOL, "Batch loss mismatch for MSE", __FILE__, __LINE__);
         } // else { assertApprox(cpu_loss, gpu_loss, TOL, "Batch loss mismatch for CE", __FILE__, __LINE__); }
     }
 

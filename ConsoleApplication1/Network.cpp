@@ -235,87 +235,6 @@ void Network::SGD(std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& trai
     }
 }
 
-double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
-    if (mini_batch.empty()) return 0.0;
-    double norm = 0.0;
-
-    if (is_gpu_context_) {
-        // GPU path: Accumulate gradients
-        std::vector<double*> weight_grads_acc = accumulate_weight_grads;
-        std::vector<double*> bias_grads_acc = accumulate_bias_grads;
-
-        // Zero out accumulators
-        for (size_t i = 0; i < layers.size(); ++i) {
-            contextGPU_->set_to_zero(weight_grads_acc[i], weight_rows[i] * weight_cols[i]);
-            contextGPU_->set_to_zero(bias_grads_acc[i], bias_sizes[i]);
-        }
-
-        // Accumulate gradients over mini-batch
-        for (const auto& [x, y] : mini_batch) {
-            feedforward_gpu(x);  // Sets device and host activations
-            auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
-            contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
-
-        }
-
-        // Add L2 regularization
-        if (lambda > 0.0) {
-            double reg_scale = lambda * mini_batch.size() / n;
-            for (size_t i = 0; i < layers.size(); ++i) {
-                contextGPU_->add_regularization(accumulate_weight_grads[i], layers[i]->get_d_weights(), reg_scale, weight_rows[i], weight_cols[i]);
-            }
-        }
-
-        // Update parameters
-        double update_scale = eta / mini_batch.size();
-        for (size_t i = 0; i < layers.size(); ++i) {
-            layers[i]->update_parameters_gpu(accumulate_weight_grads[i], accumulate_bias_grads[i], temp_weight_grads[i], temp_bias_grads[i], update_scale);
-        }
-
-        // Compute gradient norm
-        norm = contextGPU_->compute_gradient_norm_gpu(accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
-    }
-    else {
-        // CPU path 
-        std::vector<Eigen::MatrixXd> weight_grads(layers.size());
-        std::vector<Eigen::VectorXd> bias_grads(layers.size());
-
-        for (size_t i = 0; i < layers.size(); ++i) {
-            weight_grads[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
-            bias_grads[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
-        }
-
-        for (const auto& [x, y] : mini_batch) {
-            feedforward_cpu(x);  // Compute and cache activations for all layers
-            auto [nabla_b, nabla_w] = backprop_cpu(x, y, n);
-            contextCPU_->accumulateGradientsCPU(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
-        }
-
-        // Add L2 regularization
-        if (lambda > 0.0) {
-            double reg_scale = lambda * mini_batch.size() / n;
-            for (size_t i = 0; i < layers.size(); ++i) {
-                weight_grads[i] += reg_scale * layers[i]->get_weights();
-            }
-        }
-
-        double update_scale = eta / mini_batch.size();
-        for (size_t i = 0; i < layers.size(); ++i) {
-            layers[i]->update_parameters_cpu(weight_grads[i], bias_grads[i], update_scale);
-        }
-
-        double total_sq_norm = 0.0;
-        for (size_t i = 0; i < layers.size(); ++i) {
-            total_sq_norm += contextCPU_->compute_squared_normCPU(weight_grads[i]);
-            total_sq_norm += contextCPU_->compute_squared_normCPU(bias_grads[i]);
-        }
-        norm = std::sqrt(total_sq_norm) / mini_batch.size();
-    }
-
-    return norm;
-}
-
-
 std::pair<std::vector<Eigen::VectorXd>, std::vector<Eigen::MatrixXd>> Network::backprop_cpu(
     const Eigen::VectorXd& x, const Eigen::VectorXd& y, size_t n) {
 
@@ -947,6 +866,95 @@ void Network::backprop_gpu_batch(const std::vector<Eigen::VectorXd>& batch_targe
     }
 }
 
+double Network::update_mini_batch(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch, double eta, size_t n) {
+    if (mini_batch.empty()) return 0.0;
+    double norm = 0.0;
+
+    if (is_gpu_context_) {
+        // GPU path: Accumulate gradients
+        std::vector<double*> weight_grads_acc = accumulate_weight_grads;
+        std::vector<double*> bias_grads_acc = accumulate_bias_grads;
+
+        // Zero out accumulators
+        for (size_t i = 0; i < layers.size(); ++i) {
+            contextGPU_->set_to_zero(weight_grads_acc[i], weight_rows[i] * weight_cols[i]);
+            contextGPU_->set_to_zero(bias_grads_acc[i], bias_sizes[i]);
+        }
+
+        // Accumulate gradients over mini-batch
+        for (const auto& [x, y] : mini_batch) {
+            feedforward_gpu(x);  // Sets device and host activations
+            auto [nabla_b, nabla_w] = backprop_gpu(x, y, n);
+            contextGPU_->accumulateGradientsGPU(nabla_w, nabla_b, weight_grads_acc, bias_grads_acc, weight_rows, weight_cols, bias_sizes, 1.0);
+
+        }
+
+        // Add L2 regularization
+        if (lambda > 0.0) {
+            double reg_scale = lambda * mini_batch.size() / n;
+            for (size_t i = 0; i < layers.size(); ++i) {
+                contextGPU_->add_regularization(accumulate_weight_grads[i], layers[i]->get_d_weights(), reg_scale, weight_rows[i], weight_cols[i]);
+            }
+        }
+
+        // Update parameters
+        double update_scale = eta / mini_batch.size();
+        for (size_t i = 0; i < layers.size(); ++i) {
+            layers[i]->update_parameters_gpu(accumulate_weight_grads[i], accumulate_bias_grads[i], temp_weight_grads[i], temp_bias_grads[i], update_scale);
+        }
+
+        // Compute gradient norm
+        norm = contextGPU_->compute_gradient_norm_gpu(accumulate_weight_grads, accumulate_bias_grads, weight_rows, weight_cols, bias_sizes, mini_batch.size());
+    }
+    else {
+        // CPU path 
+        std::vector<Eigen::MatrixXd> weight_grads(layers.size());
+        std::vector<Eigen::VectorXd> bias_grads(layers.size());
+
+        for (size_t i = 0; i < layers.size(); ++i) {
+            weight_grads[i] = Eigen::MatrixXd::Zero(layers[i]->get_num_neurons(), layers[i]->get_num_inputs());
+            bias_grads[i] = Eigen::VectorXd::Zero(layers[i]->get_num_neurons());
+        }
+
+        for (const auto& [x, y] : mini_batch) {
+            feedforward_cpu(x);  // Compute and cache activations for all layers
+            auto [nabla_b, nabla_w] = backprop_cpu(x, y, n);
+            contextCPU_->accumulateGradientsCPU(nabla_w, nabla_b, weight_grads, bias_grads, 1.0);
+        }
+
+        //debug
+        {
+            //print grads
+            /*std::cout << "update_mini_batch - accumulate_weight_grads: \n";
+            for (size_t i = 0; i < weight_grads.size(); ++i) {
+                displayMatrixXd(weight_grads[i]);
+            }*/
+            
+        }
+
+        // Add L2 regularization
+        if (lambda > 0.0) {
+            double reg_scale = lambda * mini_batch.size() / n;
+            for (size_t i = 0; i < layers.size(); ++i) {
+                weight_grads[i] += reg_scale * layers[i]->get_weights();
+            }
+        }
+
+        double update_scale = eta / mini_batch.size();
+        for (size_t i = 0; i < layers.size(); ++i) {
+            layers[i]->update_parameters_cpu(weight_grads[i], bias_grads[i], update_scale);
+        }
+
+        double total_sq_norm = 0.0;
+        for (size_t i = 0; i < layers.size(); ++i) {
+            total_sq_norm += contextCPU_->compute_squared_normCPU(weight_grads[i]);
+            total_sq_norm += contextCPU_->compute_squared_normCPU(bias_grads[i]);
+        }
+        norm = std::sqrt(total_sq_norm) / mini_batch.size();
+    }
+
+    return norm;
+}
 
 double Network::update_mini_batch_batch(
     const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& mini_batch,
@@ -989,6 +997,15 @@ double Network::update_mini_batch_batch(
     double scale = eta / batch_size;
     double reg_scale = lambda * mini_batch.size() / n;
     //double reg_scale = lambda / n;
+
+    //debug
+    {
+        //print grads here
+        /*std::cout << "update_mini_batch_batch - accumulate_weight_grads: \n";
+        for (size_t i = 0; i < accumulate_weight_grads.size(); ++i) {
+            contextGPU_->debugPrint_batch(accumulate_weight_grads[i], sizes[i + 1], sizes[i]);
+        }*/
+    }
 
     for (size_t i = 0; i < layers.size(); ++i) {
         // Add L2 regularization: weight_grad += lambda * weights
