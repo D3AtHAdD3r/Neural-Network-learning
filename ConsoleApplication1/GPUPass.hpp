@@ -2,7 +2,7 @@
 
 #include "Activation.hpp"
 #include <Eigen/Dense>
-#include <cuda_runtime.h>
+//#include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cudnn.h>
 #include <iostream>
@@ -120,7 +120,13 @@ public:
     void copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size);
     void free_weights(double* d_weights);
     void free_biases(double* d_biases);
-
+    void allocate_vector(double** d_vector, int size);
+    void free_vector(double* d_vector);
+    void copy_to_device(double* d_vector, const Eigen::VectorXd& vector);
+    void copy_to_device(double* d_matrix, const Eigen::MatrixXd& matrix);
+    void copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size);
+    void copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols);
+    void copy_device_to_device(double* dst, const double* src, int size);
 public:
     void allocate_batch_vector(double** d_vec, int vec_size, int batch_size);
     void free_batch_vector(double* d_vec);

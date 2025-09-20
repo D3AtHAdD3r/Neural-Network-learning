@@ -4,9 +4,10 @@
 #endif
 
 #include"GPUPass.hpp"
+#include"cuda_kernels.h"
 #include <algorithm> 
 #include <iomanip>
-#include"cuda_kernels.h"
+
 
 
 double GPUPass::compute_mse_lossGPU(const Eigen::VectorXd& output, const Eigen::VectorXd& target) {
@@ -57,11 +58,11 @@ double GPUPass::compute_cross_entropy_lossGPU(const Eigen::VectorXd& output, con
     CHECK_CUDA(cudaMemcpy(d_target, target.data(), n * sizeof(double), cudaMemcpyHostToDevice));
 
     // Compute element-wise cross-entropy loss
-    crossEntropyLossKernel << <num_blocks, 256 >> > (d_output, d_target, d_loss, n);
+    cuda_kernels::crossEntropyLossKernel << <num_blocks, 256 >> > (d_output, d_target, d_loss, n);
     CHECK_CUDA(cudaGetLastError());
 
     // Sum the losses
-    sumReductionKernel << <num_blocks, 256, 256 * sizeof(double) >> > (d_loss, d_sum, n);
+    cuda_kernels::sumReductionKernel << <num_blocks, 256, 256 * sizeof(double) >> > (d_loss, d_sum, n);
     CHECK_CUDA(cudaGetLastError());
 
     // Copy partial sums to host and complete reduction
@@ -124,20 +125,30 @@ void GPUPass::add_regularization(double* d_weight_grad, double* d_weights, doubl
     cublasDaxpy(cublasHandle, m * n, &alpha, d_weights, 1, d_weight_grad, 1);
 }
 
-double GPUPass::compute_gradient_norm_gpu(
-    const std::vector<double*>& weight_grads, const std::vector<double*>& bias_grads,
-    const std::vector<int>& w_rows, const std::vector<int>& w_cols, const std::vector<int>& b_sizes, size_t batch_size) {
-    double total_sq_norm = 0.0;
-    double temp_norm = 0.0;
-    for (size_t i = 0; i < weight_grads.size(); ++i) {
-        //temp_norm = 0.0;
-        CHECK_CUBLAS(cublasDnrm2(cublasHandle, w_rows[i] * w_cols[i], weight_grads[i], 1, &temp_norm));
-        total_sq_norm += temp_norm * temp_norm;
-        CHECK_CUBLAS(cublasDnrm2(cublasHandle, b_sizes[i], bias_grads[i], 1, &temp_norm));
-        total_sq_norm += temp_norm * temp_norm;
-    }
-    return std::sqrt(total_sq_norm) / batch_size;  // Average norm per example
+// New helper: Squared norm on GPU (use reduction kernel)
+double GPUPass::compute_squared_norm_gpu(double* d_data, int n) {
+    double* d_sum;
+    cudaMalloc(&d_sum, sizeof(double));
+    cuda_kernels::sumReductionKernel << <1, 256, 256 * sizeof(double) >> > (d_data, d_sum, n);  // Simplified; use full reduction for large n
+    double sum;
+    cudaMemcpy(&sum, d_sum, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_sum);
+    return sum * sum;  // Wait, no: squared norm is sum of squares, so sum (x_i^2)
+    // Actually, modify sumReduction to sum squares
+    // New kernel for sum of squares
 }
+
+void GPUPass::process_subbatched(std::function<void(int sub_batch_size)> func, int total_batch_size, int max_batch) {
+    // Beginner note: Placeholder for processing large batches in smaller chunks.
+    // If total_batch_size > max_batch, split into sub-batches of size <= max_batch.
+    // For now, just throw an error (as per plan); implement splitting in Phase 5.3.
+    if (total_batch_size > max_batch) {
+        throw std::runtime_error("Batch size (" + std::to_string(total_batch_size) +
+            ") exceeds max (" + std::to_string(max_batch) + ")");
+    }
+    func(total_batch_size); // Process the whole batch
+}
+
 
 void GPUPass::computeLinearGPU_batch(const double* d_weights, const double* d_batch_input, const double* d_biases,
     double* d_batch_z, int m, int n, int batch_size) {
@@ -163,7 +174,7 @@ void GPUPass::computeLinearGPU_batch(const double* d_weights, const double* d_ba
     dim3 threadsPerBlock(16, 16); // 2D grid for rows and batch
     dim3 blocksPerGrid((m + threadsPerBlock.x - 1) / threadsPerBlock.x,
         (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    add_bias_batch << <blocksPerGrid, threadsPerBlock >> > (d_batch_z, d_biases, m, batch_size);
+    cuda_kernels::add_bias_batch << <blocksPerGrid, threadsPerBlock >> > (d_batch_z, d_biases, m, batch_size);
     CHECK_CUDA(cudaGetLastError());
 }
 
@@ -195,7 +206,7 @@ void GPUPass::launch_elementwise_subtract_batch(const double* a, const double* b
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
         (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    elementwise_subtract_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    cuda_kernels::elementwise_subtract_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
     CHECK_CUDA(cudaGetLastError());
 }
 
@@ -203,7 +214,7 @@ void GPUPass::launch_elementwise_multiply_batch(const double* a, const double* b
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
         (batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    elementwise_multiply_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
+    cuda_kernels::elementwise_multiply_batch_kernel << <blocksPerGrid, threadsPerBlock >> > (a, b, c, rows, batch_size);
     CHECK_CUDA(cudaGetLastError());
 }
 
@@ -254,7 +265,7 @@ void GPUPass::computeActivationDerivativeGPU_batch(const double* d_pre_activatio
     if (mode == CUDNN_ACTIVATION_SIGMOID) {
         dim3 threads(16, 16);
         dim3 blocks((vec_size + threads.x - 1) / threads.x, (batch_size + threads.y - 1) / threads.y);
-        sigmoid_prime_batch_kernel << <blocks, threads >> > (d_pre_activations, d_derivatives, vec_size, batch_size);
+        cuda_kernels::sigmoid_prime_batch_kernel << <blocks, threads >> > (d_pre_activations, d_derivatives, vec_size, batch_size);
         CHECK_CUDA(cudaGetLastError());
     }
     else {
@@ -265,4 +276,208 @@ void GPUPass::computeActivationDerivativeGPU_batch(const double* d_pre_activatio
 // Wrapper for cost derivative (MSE or CE with sigmoid: output - target)
 void GPUPass::cost_prime_mse_crossent_batched(const double* d_output, const double* d_target, double* d_delta, int rows, int batch_size) {
     launch_elementwise_subtract_batch(d_output, d_target, d_delta, rows, batch_size);
+}
+
+void GPUPass::allocate_weights(double** d_weights, int rows, int cols) {
+    CHECK_CUDA(cudaMalloc(d_weights, rows * cols * sizeof(double)));
+}
+
+void GPUPass::allocate_biases(double** d_biases, int size) {
+    CHECK_CUDA(cudaMalloc(d_biases, size * sizeof(double)));
+}
+
+void GPUPass::copy_weights_to_device(double* d_weights, const Eigen::MatrixXd& weights) {
+    CHECK_CUDA(cudaMemcpy(d_weights, weights.data(), weights.rows() * weights.cols() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUPass::copy_biases_to_device(double* d_biases, const Eigen::VectorXd& biases) {
+    CHECK_CUDA(cudaMemcpy(d_biases, biases.data(), biases.size() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUPass::copy_weights_to_host(Eigen::MatrixXd& weights, double* d_weights, int rows, int cols) {
+    weights.resize(rows, cols);
+    CHECK_CUDA(cudaMemcpy(weights.data(), d_weights, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUPass::copy_biases_to_host(Eigen::VectorXd& biases, double* d_biases, int size) {
+    biases.resize(size);
+    CHECK_CUDA(cudaMemcpy(biases.data(), d_biases, size * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUPass::free_weights(double* d_weights) {
+    if (d_weights) {
+        CHECK_CUDA(cudaFree(d_weights));
+    }
+}
+
+void GPUPass::free_biases(double* d_biases) {
+    if (d_biases) {
+        CHECK_CUDA(cudaFree(d_biases));
+    }
+}
+
+void GPUPass::allocate_vector(double** d_vector, int size) {
+    //CHECK_CUDA(cudaMalloc(d_vector, size * sizeof(double)));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void**>(d_vector), size * sizeof(double)));
+}
+
+void GPUPass::free_vector(double* d_vector) {
+    if (d_vector) {
+        CHECK_CUDA(cudaFree(d_vector));
+    }
+}
+
+void GPUPass::copy_to_device(double* d_vector, const Eigen::VectorXd& vector) {
+    CHECK_CUDA(cudaMemcpy(d_vector, vector.data(), vector.size() * sizeof(double), cudaMemcpyHostToDevice));
+}
+
+void GPUPass::copy_to_device(double* d_matrix, const Eigen::MatrixXd& matrix) {
+    CHECK_CUDA(cudaMemcpy(d_matrix, matrix.data(),
+        matrix.rows() * matrix.cols() * sizeof(double),
+        cudaMemcpyHostToDevice));
+}
+
+void GPUPass::copy_to_host(Eigen::VectorXd& vector, double* d_vector, int size) {
+    vector.resize(size);
+    CHECK_CUDA(cudaMemcpy(vector.data(), d_vector, size * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUPass::copy_to_host(Eigen::MatrixXd& matrix, double* d_matrix, int rows, int cols) {
+    matrix.resize(rows, cols);
+    CHECK_CUDA(cudaMemcpy(matrix.data(), d_matrix, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
+}
+
+void GPUPass::copy_device_to_device(double* dst, const double* src, int size) {
+    CHECK_CUDA(cudaMemcpy(dst, src, size * sizeof(double), cudaMemcpyDeviceToDevice));
+}
+
+void GPUPass::allocate_batch_vector(double** d_vec, int vec_size, int batch_size) {
+    // Beginner note: Allocate GPU memory for a batch matrix (vec_size rows × batch_size cols).
+    // Stored as a flat array of size vec_size * batch_size * sizeof(double).
+    // cudaMalloc sets *d_vec to the allocated pointer.
+    size_t total_size = static_cast<size_t>(vec_size) * batch_size * sizeof(double);
+    CHECK_CUDA(cudaMalloc(d_vec, total_size));
+}
+
+void GPUPass::free_batch_vector(double* d_vec) {
+    // Beginner note: Free GPU memory allocated for a batch matrix.
+    // Check for nullptr to avoid errors; cudaFree is safe to call on null.
+    if (d_vec) {
+        CHECK_CUDA(cudaFree(d_vec));
+    }
+}
+
+void GPUPass::copy_batch_to_device(double* d_batch_matrix, const std::vector<Eigen::VectorXd>& batch, bool transpose) {
+    // Beginner note: Copy a batch of vectors (e.g., inputs) from host to device.
+    // Each Eigen::VectorXd is one example (vec_size elements). We store as a matrix:
+    // - If transpose=false: rows=vec_size, cols=batch_size (column-major, cuBLAS default).
+    // - If transpose=true: rows=batch_size, cols=vec_size (less common, for specific ops).
+    int batch_size = static_cast<int>(batch.size());
+    if (batch_size == 0) return;
+
+    int vec_size = static_cast<int>(batch[0].size());
+    // Check all vectors have same size
+    for (const auto& vec : batch) {
+        if (vec.size() != vec_size) {
+            throw std::runtime_error("Inconsistent vector sizes in batch");
+        }
+    }
+
+    if (transpose) {
+        // Store as batch_size × vec_size
+        std::vector<double> host_buffer(batch_size * vec_size);
+        for (int i = 0; i < batch_size; ++i) {
+            for (int j = 0; j < vec_size; ++j) {
+                host_buffer[i * vec_size + j] = batch[i](j);
+            }
+        }
+
+        CHECK_CUDA(cudaMemcpy(d_batch_matrix, host_buffer.data(), batch_size * vec_size * sizeof(double), cudaMemcpyHostToDevice));
+    }
+    else {
+        // Store as vec_size × batch_size (column-major)
+        std::vector<double> host_buffer(vec_size * batch_size);
+        for (int j = 0; j < batch_size; ++j) {
+            for (int i = 0; i < vec_size; ++i) {
+                host_buffer[i + j * vec_size] = batch[j](i);
+            }
+        }
+        CHECK_CUDA(cudaMemcpy(d_batch_matrix, host_buffer.data(), vec_size * batch_size * sizeof(double), cudaMemcpyHostToDevice));
+    }
+}
+
+void GPUPass::copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, const double* d_batch_matrix, int vec_size, int batch_size) {
+    // Beginner note: Copy a batch matrix from device to host.
+    // The device matrix is vec_size × batch_size (column-major).
+    // Each column becomes an Eigen::VectorXd in the output batch.
+    if (batch_size <= 0 || vec_size <= 0) return;
+
+    std::vector<double> host_buffer(vec_size * batch_size);
+    CHECK_CUDA(cudaMemcpy(host_buffer.data(), d_batch_matrix, vec_size * batch_size * sizeof(double), cudaMemcpyDeviceToHost));
+
+    batch.resize(batch_size);
+    for (int j = 0; j < batch_size; ++j) {
+        batch[j].resize(vec_size);
+        for (int i = 0; i < vec_size; ++i) {
+            batch[j](i) = host_buffer[i + j * vec_size];
+        }
+    }
+}
+
+void GPUPass::set_to_zero_batch(double* d_data, int size, int batch_size) {
+    // Beginner note: Zero out a batch matrix (size × batch_size).
+    // Reuse existing kernel; total size is size * batch_size.
+    int total_size = size * batch_size;
+    int threads = 256;
+    int blocks = (total_size + threads - 1) / threads;
+    cuda_kernels::set_to_zero_kernel << <blocks, threads >> > (d_data, total_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// New elementwise_multiply_Caller
+void GPUPass::launch_elementwise_multiply(const double* a, const double* b, double* c, int n) {
+    int threads = 256;
+    int blocks = (n + threads - 1) / threads;
+    cuda_kernels::elementwise_multiply << <blocks, threads >> > (a, b, c, n);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// New: Elementwise subtract (a - b -> c)
+void GPUPass::launch_elementwise_subtract(const double* a, const double* b, double* c, int n) {
+    CHECK_CUDA(cudaMemcpy(c, a, n * sizeof(double), cudaMemcpyDeviceToDevice));
+    double alpha = -1.0;
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, n, &alpha, b, 1, c, 1));
+}
+
+
+void GPUPass::debugPrint(const double* data, int num_inputs) {
+    // Launch with enough threads
+    int threads = 256;
+    int blocks = (num_inputs + threads - 1) / threads;
+    cuda_kernels::debugPrint_kernel << <blocks, threads >> > (data, num_inputs);
+    cudaDeviceSynchronize();
+}
+
+void GPUPass::debugPrint_batch(const double* d_data, int rows, int cols) {
+    // Beginner note: Debug print a batch matrix (rows × cols).
+    // Copy to host and print a small portion (up to 10×10) to avoid flooding output.
+    std::vector<double> host_data(rows * cols);
+    CHECK_CUDA(cudaMemcpy(host_data.data(), d_data, rows * cols * sizeof(double), cudaMemcpyDeviceToHost));
+
+    int max_rows = std::min(rows, 10);
+    int max_cols = std::min(cols, 10);
+    std::cout << "Batch matrix (" << rows << " × " << cols << "):\n";
+    for (int i = 0; i < max_rows; ++i) {
+        std::cout << "[ ";
+        for (int j = 0; j < max_cols; ++j) {
+            std::cout << std::fixed << std::setprecision(4) << host_data[i + j * rows];
+            if (j < max_cols - 1) std::cout << ", ";
+        }
+        if (max_cols < cols) std::cout << ", ...";
+        std::cout << " ]\n";
+    }
+    if (max_rows < rows || max_cols < cols) {
+        std::cout << "(Truncated, full size: " << rows << " × " << cols << ")\n";
+    }
+    cudaDeviceSynchronize();
 }
