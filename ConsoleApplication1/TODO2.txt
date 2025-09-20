@@ -4,3 +4,11 @@ void GPUComputationContext::computeGradientsGPU_batch:
 you should allocate d_ones_batch once and reuse it (instead of malloc/free per call).
 
 2- Compute batch loss in  Network::backprop_gpu_batch
+
+3- void GPUPass::computeActivationDerivativeGPU_batch- 
+remove activation check logic from here, check should be done in caller(network,layer), and call 
+specific function in gpupass - ie..computeActivationDerivativeGPU_batch_sigmoid.
+-cudnnActivationMode_t mode = activation->getCudnnActivationMode();
+    if (mode == CUDNN_ACTIVATION_SIGMOID) 
+Above check, is little confusing as we are not using  cudnnActivationMode_t mode to calculate ActivationDerivative for sigmoid, but gets job done,
+obviously will be replaced in the caller by neuron_type check.

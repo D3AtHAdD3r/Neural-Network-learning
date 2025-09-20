@@ -1,13 +1,12 @@
 #include "NeuralNetworkTest.hpp"
 #include "Network.hpp"
+#include "Network_b.hpp"
 #include "mnistLoader.h"
 #include "utils.h"
 #include <iostream>
 #include <chrono> 
 #include <vector>
 #include <string>
-
-
 
 /*
 Notes- 
@@ -17,40 +16,18 @@ Reduce the learning rate over time (e.g., using a scheduler or smaller initial v
 Experiment with a slightly higher $\lambda$ (e.g., 0.001) to see if it helps prevent overfitting on the test set.
 */
 
-
-
 // Assuming enums are defined like this:
-std::string lossTypeToString(Network::LossType loss) {
-    switch (loss) {
-    case Network::LossType::MSE: return "Mean Squared Error";
-    case Network::LossType::CROSS_ENTROPY: return "Cross Entropy";
-    default: return "Unknown Loss";
-    }
-}
-
-std::string neuronTypeToString(Network::NeuronType neuron) {
-    switch (neuron) {
-    case Network::NeuronType::SIGMOID: return "Sigmoid";
-    //case Network::NeuronType::RELU: return "ReLU";
-    //case Network::NeuronType::TANH: return "Tanh";
-    default: return "Unknown Neuron";
-    }
-}
-
+std::string lossTypeToString(Network::LossType loss);
+std::string lossTypeToString(Network_b::LossType loss);
+std::string neuronTypeToString(Network::NeuronType neuron);
+std::string neuronTypeToString(Network_b::NeuronType neuron);
 void printNetworkParams(const std::string& label, const std::vector<int>& sizes, double l2strength,
-    Network::LossType loss, Network::NeuronType neuron) {
-    std::cout << "=== " << label << " Network Configuration ===\n";
-    std::cout << "Layer sizes: ";
-    for (size_t i = 0; i < sizes.size(); ++i) {
-        std::cout << sizes[i];
-        if (i != sizes.size() - 1) std::cout << " -> ";
-    }
-    std::cout << "\nL2 Strength: " << l2strength << "\n";
-    std::cout << "Loss function: " << lossTypeToString(loss) << "\n";
-    std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
-}
+    Network::LossType loss, Network::NeuronType neuron);
+void printNetworkParams(const std::string& label, const std::vector<int>& sizes, double l2strength,
+    Network_b::LossType loss, Network_b::NeuronType neuron);
 
-int main() {
+
+int main_888() {
     std::cout << "-----------program started----------\n";
     std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
@@ -59,7 +36,7 @@ int main() {
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
     auto training_data = load_mnist_training(train_images, train_labels, 5000);
-    auto test_data = load_mnist_test(test_images, test_labels, 3000);
+    auto test_data = load_mnist_test(test_images, test_labels, 10000);
 
     CPUComputationContext cpuContext;
     GPUComputationContext gpuContext;
@@ -96,7 +73,38 @@ int main() {
     return 0;
 }
 
+int main() {
+    std::cout << "-----------program started----------\n";
+    std::vector<int> sizes = { 784, 30, 10 };
+    std::string train_images = "data/train-images-idx3-ubyte";
+    std::string train_labels = "data/train-labels-idx1-ubyte";
+    std::string test_images = "data/t10k-images-idx3-ubyte";
+    std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
+    auto training_data = load_mnist_training(train_images, train_labels, 25000);
+    auto test_data = load_mnist_test(test_images, test_labels, 10000);
+    double l2strength = 0.001;
+    Network_b::LossType loss = Network_b::LossType::CROSS_ENTROPY;
+    Network_b::NeuronType neuron = Network_b::NeuronType::SIGMOID;
+
+    Network_b net(sizes, l2strength, loss, neuron);
+
+    int epochs = 10;
+    int mini_batch_size = 32;
+    double eta = 1.5;
+
+    // Display network parameters
+    printNetworkParams("GPU", sizes, l2strength, loss, neuron);
+
+    std::cout << "Training with Gpu-Batched context...\n";
+    auto gpu_start = std::chrono::high_resolution_clock::now();
+    net.SGD(training_data, epochs, mini_batch_size, eta, &test_data, true);
+    auto gpu_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> gpu_duration = gpu_end - gpu_start;
+    std::cout << "GPU training completed in " << gpu_duration.count() << " seconds.\n";
+
+    return 0;
+}
 
 int main66() {
 
@@ -105,4 +113,67 @@ int main66() {
     bool all_passed = tester.runAllTests();
 
     return 0;
+}
+
+
+
+// Assuming enums are defined like this:
+std::string lossTypeToString(Network::LossType loss) {
+    switch (loss) {
+    case Network::LossType::MSE: return "Mean Squared Error";
+    case Network::LossType::CROSS_ENTROPY: return "Cross Entropy";
+    default: return "Unknown Loss";
+    }
+}
+
+std::string lossTypeToString(Network_b::LossType loss) {
+    switch (loss) {
+    case Network_b::LossType::MSE: return "Mean Squared Error";
+    case Network_b::LossType::CROSS_ENTROPY: return "Cross Entropy";
+    default: return "Unknown Loss";
+    }
+}
+
+std::string neuronTypeToString(Network::NeuronType neuron) {
+    switch (neuron) {
+    case Network::NeuronType::SIGMOID: return "Sigmoid";
+        //case Network::NeuronType::RELU: return "ReLU";
+        //case Network::NeuronType::TANH: return "Tanh";
+    default: return "Unknown Neuron";
+    }
+}
+
+std::string neuronTypeToString(Network_b::NeuronType neuron) {
+    switch (neuron) {
+    case Network_b::NeuronType::SIGMOID: return "Sigmoid";
+        //case Network::NeuronType::RELU: return "ReLU";
+        //case Network::NeuronType::TANH: return "Tanh";
+    default: return "Unknown Neuron";
+    }
+}
+
+void printNetworkParams(const std::string& label, const std::vector<int>& sizes, double l2strength,
+    Network_b::LossType loss, Network_b::NeuronType neuron) {
+    std::cout << "=== " << label << " Network Configuration ===\n";
+    std::cout << "Layer sizes: ";
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        std::cout << sizes[i];
+        if (i != sizes.size() - 1) std::cout << " -> ";
+    }
+    std::cout << "\nL2 Strength: " << l2strength << "\n";
+    std::cout << "Loss function: " << lossTypeToString(loss) << "\n";
+    std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
+}
+
+void printNetworkParams(const std::string& label, const std::vector<int>& sizes, double l2strength,
+    Network::LossType loss, Network::NeuronType neuron) {
+    std::cout << "=== " << label << " Network Configuration ===\n";
+    std::cout << "Layer sizes: ";
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        std::cout << sizes[i];
+        if (i != sizes.size() - 1) std::cout << " -> ";
+    }
+    std::cout << "\nL2 Strength: " << l2strength << "\n";
+    std::cout << "Loss function: " << lossTypeToString(loss) << "\n";
+    std::cout << "Neuron type: " << neuronTypeToString(neuron) << "\n\n";
 }

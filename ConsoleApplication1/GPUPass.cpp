@@ -138,6 +138,20 @@ double GPUPass::compute_squared_norm_gpu(double* d_data, int n) {
     // New kernel for sum of squares
 }
 
+double GPUPass::compute_squared_normGPU(const Eigen::MatrixXd& matrix) {
+    int m = matrix.rows();
+    int n = matrix.cols();
+    double* d_matrix;
+    CHECK_CUDA(cudaMalloc(&d_matrix, m * n * sizeof(double)));
+    CHECK_CUDA(cudaMemcpy(d_matrix, matrix.data(), m * n * sizeof(double), cudaMemcpyHostToDevice));
+
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, m * n, d_matrix, 1, &norm));
+
+    CHECK_CUDA(cudaFree(d_matrix));
+    return norm * norm;
+}
+
 void GPUPass::process_subbatched(std::function<void(int sub_batch_size)> func, int total_batch_size, int max_batch) {
     // Beginner note: Placeholder for processing large batches in smaller chunks.
     // If total_batch_size > max_batch, split into sub-batches of size <= max_batch.
@@ -431,6 +445,14 @@ void GPUPass::set_to_zero_batch(double* d_data, int size, int batch_size) {
     int threads = 256;
     int blocks = (total_size + threads - 1) / threads;
     cuda_kernels::set_to_zero_kernel << <blocks, threads >> > (d_data, total_size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+
+void GPUPass::set_to_zero(double* d_data, int n) {
+    int threads = 256;
+    int blocks = (n + threads - 1) / threads;
+    cuda_kernels::set_to_zero_kernel << <blocks, threads >> > (d_data, n);
     CHECK_CUDA(cudaGetLastError());
 }
 

@@ -42,6 +42,12 @@
     <ClCompile Include="temp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Layer_b.cpp">
+      <Filter>Net-Batch</Filter>
+    </ClCompile>
+    <ClCompile Include="Network_b.cpp">
+      <Filter>Net-Batch</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mnistLoader.h">
@@ -81,6 +87,12 @@
       <Filter>Net-Batch</Filter>
     </ClInclude>
     <ClInclude Include="cuda_kernels.h">
+      <Filter>Net-Batch</Filter>
+    </ClInclude>
+    <ClInclude Include="Network_b.hpp">
+      <Filter>Net-Batch</Filter>
+    </ClInclude>
+    <ClInclude Include="Layer_b.hpp">
       <Filter>Net-Batch</Filter>
     </ClInclude>
   </ItemGroup>

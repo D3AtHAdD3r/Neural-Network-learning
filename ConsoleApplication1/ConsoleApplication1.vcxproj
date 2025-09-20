@@ -164,12 +164,14 @@
   <ItemGroup>
     <CudaCompile Include="GPUPass.cpp" />
     <CudaCompile Include="cuda_kernels.cpp" />
+    <ClCompile Include="Layer_b.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="CPUComputationContext.cpp" />
     <CudaCompile Include="GPUComputationContext.cpp" />
     <ClCompile Include="Layer.cpp" />
     <ClCompile Include="LegacyFuncs.cpp" />
     <ClCompile Include="Network.cpp" />
+    <ClCompile Include="Network_b.cpp" />
     <ClCompile Include="NeuralNetworkTest.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
@@ -199,9 +201,11 @@
     <ClInclude Include="GPUComputationContext.hpp" />
     <ClInclude Include="GPUPass.hpp" />
     <ClInclude Include="Layer.hpp" />
+    <ClInclude Include="Layer_b.hpp" />
     <ClInclude Include="LegacyFuncs.h" />
     <ClInclude Include="mnistLoader.h" />
     <ClInclude Include="Network.hpp" />
+    <ClInclude Include="Network_b.hpp" />
     <ClInclude Include="NeuralNetworkTest.hpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>

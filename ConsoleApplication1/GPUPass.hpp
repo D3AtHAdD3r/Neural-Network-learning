@@ -68,6 +68,7 @@ public:
 
     void add_regularization(double* d_weight_grad, double* d_weights, double scale, int m, int n);
     double compute_squared_norm_gpu(double* d_data, int n);
+    double compute_squared_normGPU(const Eigen::MatrixXd& matrix);
 public:
     //batched funcs
 
@@ -133,6 +134,7 @@ public:
     void copy_batch_to_device(double* d_batch_matrix, const std::vector<Eigen::VectorXd>& batch, bool transpose = false);
     void copy_batch_to_host(std::vector<Eigen::VectorXd>& batch, const double* d_batch_matrix, int vec_size, int batch_size);
     void set_to_zero_batch(double* d_data, int size, int batch_size);
+    void set_to_zero(double* d_data, int n);
 public:
     void launch_elementwise_multiply(const double* a, const double* b, double* c, int n);
     void launch_elementwise_subtract(const double* a, const double* b, double* c, int n);
