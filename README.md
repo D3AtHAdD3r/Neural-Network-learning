@@ -1,3 +1,10 @@
+ * @brief A feedforward neural network.
+
+ * Implements a multi-layer neural network for tasks like MNIST classification,
+ * supporting feedforward, backpropagation, and stochastic gradient descent (SGD).
+ * Supports both MSE and Cross-Entropy loss functions as well as L2 implementation.
+ * Neurons: sigmod(for now).
+
 ## Building in Visual Studio
 1. Clone the repository with submodules: `git clone --recurse-submodules <repo-url>`
 2. Open the `.sln` file in Visual Studio.
