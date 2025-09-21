@@ -1,4 +1,4 @@
- * @brief A feedforward neural network.
+#Brief: A feedforward neural network.
 
  * Implements a multi-layer neural network for tasks like MNIST classification,
  * supporting feedforward, backpropagation, and stochastic gradient descent (SGD).
