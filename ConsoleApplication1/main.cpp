@@ -75,13 +75,13 @@ int main_888() {
 
 int main() {
     std::cout << "-----------program started----------\n";
-    std::vector<int> sizes = { 784, 30, 10 };
+    std::vector<int> sizes = { 784, 300, 100, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
     std::string train_labels = "data/train-labels-idx1-ubyte";
     std::string test_images = "data/t10k-images-idx3-ubyte";
     std::string test_labels = "data/t10k-labels-idx1-ubyte";
 
-    auto training_data = load_mnist_training(train_images, train_labels, 25000);
+    auto training_data = load_mnist_training(train_images, train_labels, 65000);
     auto test_data = load_mnist_test(test_images, test_labels, 10000);
     double l2strength = 0.001;
     Network_b::LossType loss = Network_b::LossType::CROSS_ENTROPY;
@@ -90,7 +90,7 @@ int main() {
     Network_b net(sizes, l2strength, loss, neuron);
 
     int epochs = 10;
-    int mini_batch_size = 32;
+    int mini_batch_size = 128;
     double eta = 1.5;
 
     // Display network parameters
@@ -114,8 +114,6 @@ int main66() {
 
     return 0;
 }
-
-
 
 // Assuming enums are defined like this:
 std::string lossTypeToString(Network::LossType loss) {
