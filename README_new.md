@@ -1,6 +1,15 @@
 ```markdown
 # MyNeuralNetworkProject
 
+
+ * @brief A feedforward neural network.
+
+ * Implements a multi-layer neural network for tasks like MNIST classification,
+ * supporting feedforward, backpropagation, and stochastic gradient descent (SGD).
+ * Supports both MSE and Cross-Entropy loss functions as well as L2 implementation.
+ * Neurons: sigmod(for now).
+ 
+
 ## Prerequisites
 - Visual Studio 2022 with C++ Desktop Development workload
 - Python 3.x (for setup script)
