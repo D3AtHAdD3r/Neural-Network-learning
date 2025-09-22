@@ -45,6 +45,8 @@ public:
     bool test_computeActivationDerivativeGPU_batch();
     bool test_cost_prime_mse_crossent_batched();
     bool test_compute_mse_loss_batch_gpu();
+    bool test_evaluate_batch();
+    bool test_evaluate_batch_2();
 public:
     bool runAllTests();
 public:

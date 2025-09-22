@@ -111,6 +111,10 @@ public:
 
     //computes cost prime for mse or crossentropy with sigmoid. 
     void cost_prime_mse_crossent_batched(const double* d_output, const double* d_target, double* d_delta, int rows, int batch_size);
+
+    // Batched versions of loss functions (sum over batch; use device pointers for efficiency)
+    double compute_mse_loss_batchGPU(const double* d_output, const double* d_target, int output_size, int batch_size);
+    double compute_cross_entropy_loss_batchGPU(const double* d_output, const double* d_target, int output_size, int batch_size);
 public:
     // Memory management for GPU
     void allocate_weights(double** d_weights, int rows, int cols);

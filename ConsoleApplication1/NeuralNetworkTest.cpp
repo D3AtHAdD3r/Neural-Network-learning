@@ -6,6 +6,23 @@
 #include <cassert>
 #include <iomanip>
 #include <map>
+#include"Network_b.hpp"
+
+// Helper function to compute MSE loss manually for a single example
+double manual_mse_loss(const Eigen::VectorXd & output, const Eigen::VectorXd & target) {
+    Eigen::VectorXd diff = output - target;
+    return diff.squaredNorm();
+}
+
+// Helper function to compute Cross-Entropy loss manually for a single example
+double manual_cross_entropy_loss(const Eigen::VectorXd & output, const Eigen::VectorXd & target) {
+    double loss = 0.0;
+    for (int i = 0; i < output.size(); ++i) {
+        double a = std::max(1e-15, std::min(1.0 - 1e-15, output(i)));
+        loss -= target(i) * std::log(a) + (1.0 - target(i)) * std::log(1.0 - a);
+    }
+    return loss;
+}
 
 NeuralNetworkTest::NeuralNetworkTest(int layer_inputs, int layer_neurons, unsigned int seed, const std::vector<int>& network_sizes, Network::NeuronType neuron_type) :
     layer_inputs_(layer_inputs), layer_neurons_(layer_neurons), seed_(seed),
@@ -1324,7 +1341,7 @@ bool NeuralNetworkTest::runAllTests()
     //tests
     //testNetworkBackprop();
     //testUpdateMiniBatch();
-    //customtest();
+    customtest();
 
     //test_launch_elementwise_subtract_batch();
     //test_launch_elementwise_multiply_batch();
@@ -1337,10 +1354,176 @@ bool NeuralNetworkTest::runAllTests()
     //testBatchFunctionsGPU_context();
     //test_feedforward_gpu_batch();
     //test_backprop_gpu_batch();
-    test_update_mini_batch_batch();
-
+    //test_update_mini_batch_batch();
+    
     std::cout << "Test Summary: " << passed_tests_ << "/" << total_tests_ << " tests passed" << std::endl;
     return passed_tests_ == total_tests_;
+}
+
+//test against cpu context
+bool NeuralNetworkTest::test_evaluate_batch_2() {
+
+    std::cout << "-----Running Test: test_evaluate_batch_2-----" << std::endl;
+    total_tests_++;
+    
+    // Set up a small network: 2 inputs, 2 hidden, 2 outputs
+    std::vector<int> sizes = { 2, 2, 2 };
+    unsigned int seed = 42;
+
+    // Test both loss types
+    Network::LossType loss_types_c[] = { Network::LossType::MSE, Network::LossType::CROSS_ENTROPY };
+    Network_b::LossType loss_types_b[] = { Network_b::LossType::MSE, Network_b::LossType::CROSS_ENTROPY };
+    CPUComputationContext cptCtx;
+
+    for (int i = 0; i < 2; ++i) {
+        std::cout << "LossType: " << std::string(loss_types_b[i] == Network_b::LossType::MSE ? "MSE" : "CrossEntropy");
+
+        // Initialize network with no regularization (lambda = 0)
+        Network network_c(sizes, 0.0, loss_types_c[i], Network::NeuronType::SIGMOID, &cptCtx, seed, 2);
+        Network_b network_b(sizes, 0.0, loss_types_b[i], Network_b::NeuronType::SIGMOID, seed, 2);
+
+        // Set known weights and biases for reproducibility
+        Eigen::MatrixXd w1(2, 2); // Layer 1: 2 neurons x 2 inputs
+        w1 << 0.5, -0.3,
+            0.2, 0.4;
+        Eigen::VectorXd b1(2); // Layer 1 biases
+        b1 << 0.1, -0.1;
+        Eigen::MatrixXd w2(2, 2); // Layer 2: 2 neurons x 2 inputs
+        w2 << -0.4, 0.6,
+            0.3, -0.5;
+        Eigen::VectorXd b2(2); // Layer 2 biases
+        b2 << 0.2, 0.1;
+
+        network_c.set_layer_weights(0, w1);
+        network_c.set_layer_biases(0, b1);
+        network_c.set_layer_weights(1, w2);
+        network_c.set_layer_biases(1, b2);
+
+        network_b.set_layer_weights(0, w1);
+        network_b.set_layer_biases(0, b1);
+        network_b.set_layer_weights(1, w2);
+        network_b.set_layer_biases(1, b2);
+
+        // Create test batch: 2 examples
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> test_data(2);
+        test_data[0].first = Eigen::VectorXd(2);  // Input 1
+        test_data[0].first << 1.0, 0.5;
+        test_data[0].second = Eigen::VectorXd(2); // Target 1
+        test_data[0].second << 1.0, 0.0;
+        test_data[1].first = Eigen::VectorXd(2);  // Input 2
+        test_data[1].first << 0.2, 1.0;
+        test_data[1].second = Eigen::VectorXd(2); // Target 2
+        test_data[1].second << 0.0, 1.0;
+
+        // Run evaluate_batch
+        auto [correct_c, total_loss_c] = network_c.evaluate(test_data, test_data.size());
+        auto [correct_b, total_loss_b] = network_b.evaluate_batch(test_data, test_data.size());
+        // Compare results
+        assertApprox(total_loss_c, total_loss_b, TOL, "Batch loss mismatch", __FILE__, __LINE__);
+        assertTrue(correct_c == correct_b, "accuracy mismatch", __FILE__, __LINE__);
+    }
+
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
+}
+
+//testing both MSE and Cross-Entropy loss functions against manual calculations.
+bool NeuralNetworkTest::test_evaluate_batch() {
+
+    std::cout << "-----Running Test: test_evaluate_batch-----" << std::endl;
+    total_tests_++;
+
+    // Set up a small network: 2 inputs, 2 hidden, 2 outputs
+    std::vector<int> sizes = { 2, 2, 2 };
+    unsigned int seed = 42;
+
+    // Test both loss types
+    Network_b::LossType loss_types[] = { Network_b::LossType::MSE, Network_b::LossType::CROSS_ENTROPY };
+
+    for (auto loss_type : loss_types) {
+        std::cout << "LossType: " << std::string(loss_type == Network_b::LossType::MSE ? "MSE" : "CrossEntropy");
+
+        // Initialize network with no regularization (lambda = 0)
+        Network_b network(sizes, 0.0, loss_type, Network_b::NeuronType::SIGMOID, seed, 2);
+
+        // Set known weights and biases for reproducibility
+        Eigen::MatrixXd w1(2, 2); // Layer 1: 2 neurons x 2 inputs
+        w1 << 0.5, -0.3,
+            0.2, 0.4;
+        Eigen::VectorXd b1(2); // Layer 1 biases
+        b1 << 0.1, -0.1;
+        Eigen::MatrixXd w2(2, 2); // Layer 2: 2 neurons x 2 inputs
+        w2 << -0.4, 0.6,
+            0.3, -0.5;
+        Eigen::VectorXd b2(2); // Layer 2 biases
+        b2 << 0.2, 0.1;
+
+        network.set_layer_weights(0, w1);
+        network.set_layer_biases(0, b1);
+        network.set_layer_weights(1, w2);
+        network.set_layer_biases(1, b2);
+
+        // Create test batch: 2 examples
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> test_data(2);
+        test_data[0].first = Eigen::VectorXd(2);  // Input 1
+        test_data[0].first << 1.0, 0.5;
+        test_data[0].second = Eigen::VectorXd(2); // Target 1
+        test_data[0].second << 1.0, 0.0;
+        test_data[1].first = Eigen::VectorXd(2);  // Input 2
+        test_data[1].first << 0.2, 1.0;
+        test_data[1].second = Eigen::VectorXd(2); // Target 2
+        test_data[1].second << 0.0, 1.0;
+
+        // Manual forward pass for each example
+        std::vector<Eigen::VectorXd> manual_outputs(2);
+        for (int i = 0; i < 2; ++i) {
+            // Layer 1: z1 = W1 * input + b1, a1 = sigmoid(z1)
+            Eigen::VectorXd z1 = w1 * test_data[i].first + b1;
+            Eigen::VectorXd a1(2);
+            for (int j = 0; j < 2; ++j) {
+                a1(j) = 1.0 / (1.0 + std::exp(-z1(j)));
+            }
+            // Layer 2: z2 = W2 * a1 + b2, a2 = sigmoid(z2)
+            Eigen::VectorXd z2 = w2 * a1 + b2;
+            manual_outputs[i].resize(2);
+            for (int j = 0; j < 2; ++j) {
+                manual_outputs[i](j) = 1.0 / (1.0 + std::exp(-z2(j)));
+            }
+        }
+
+        // Compute manual correctness and loss
+        int manual_correct = 0;
+        double manual_total_loss = 0.0;
+        for (int i = 0; i < 2; ++i) {
+            // Correctness: max index of output vs target
+            Eigen::Index pred_idx, target_idx;
+            manual_outputs[i].maxCoeff(&pred_idx);
+            test_data[i].second.maxCoeff(&target_idx);
+            if (pred_idx == target_idx) {
+                ++manual_correct;
+            }
+            // Loss
+            if (loss_type == Network_b::LossType::MSE) {
+                manual_total_loss += manual_mse_loss(manual_outputs[i], test_data[i].second);
+            }
+            else {
+                manual_total_loss += manual_cross_entropy_loss(manual_outputs[i], test_data[i].second);
+            }
+        }
+
+        // Run evaluate_batch
+        auto [correct, total_loss] = network.evaluate_batch(test_data, test_data.size());
+        // Compare results
+        assertApprox(total_loss, manual_total_loss, TOL, "Batch loss mismatch", __FILE__, __LINE__);
+        assertTrue(correct == manual_correct, "accuracy mismatch", __FILE__, __LINE__);
+
+    }
+
+    std::cout << "Test Passed.." << std::endl;
+    passed_tests_++;
+    return true;
 }
 
 bool NeuralNetworkTest::customtest() {

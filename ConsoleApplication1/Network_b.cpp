@@ -435,21 +435,47 @@ std::pair<int, double> Network_b::evaluate_batch(const std::vector<std::pair<Eig
         std::vector<Eigen::VectorXd> sub_outputs;
         feedforward_batch(sub_inputs, sub_outputs);
 
-        // Accumulate correct and loss
+        // Copy targets to device for batched loss
+        gpuCtx_->copy_batch_to_device(d_batch_targets, sub_targets, false);
+
+        // Compute batched loss on GPU
+        double sub_loss = 0.0;
+        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+            sub_loss = gpuCtx_->compute_mse_loss_batchGPU(d_batch_activations.back(), d_batch_targets, sizes.back(), sub_size);
+        }
+        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+            sub_loss = gpuCtx_->compute_cross_entropy_loss_batchGPU(d_batch_activations.back(), d_batch_targets, sizes.back(), sub_size);
+        }
+        else {
+            throw std::runtime_error("Unsupported loss type");
+        }
+        total_loss += sub_loss;
+
+        // Accumulate correct (keep host-side for argmax; small batch sizes make this efficient)
         for (size_t i = 0; i < sub_size; ++i) {
             if (is_correct_prediction(sub_outputs[i], sub_targets[i])) {
                 ++correct;
             }
+        }
 
-            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-                total_loss += gpuCtx_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
-            }
-            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-                total_loss += gpuCtx_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
-            }
-            else {
-                throw std::runtime_error("Unsupported loss type");
-            }
+        {
+            //old code
+            // Accumulate correct and loss
+            /*for (size_t i = 0; i < sub_size; ++i) {
+                if (is_correct_prediction(sub_outputs[i], sub_targets[i])) {
+                    ++correct;
+                }
+
+                if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                    total_loss += gpuCtx_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
+                }
+                else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                    total_loss += gpuCtx_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
+                }
+                else {
+                    throw std::runtime_error("Unsupported loss type");
+                }
+            }*/
         }
     }
 
@@ -503,21 +529,46 @@ std::pair<int, double> Network_b::evaluate_batch(const std::vector<std::pair<Eig
         std::vector<Eigen::VectorXd> sub_outputs;
         feedforward_batch(sub_inputs, sub_outputs);
 
-        // Accumulate correct and loss
+        // Copy targets to device for batched loss (sub_targets are one-hot)
+        gpuCtx_->copy_batch_to_device(d_batch_targets, sub_targets, false);
+
+        // Compute batched loss on GPU
+        double sub_loss = 0.0;
+        if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+            sub_loss = gpuCtx_->compute_mse_loss_batchGPU(d_batch_activations.back(), d_batch_targets, sizes.back(), sub_size);
+        }
+        else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+            sub_loss = gpuCtx_->compute_cross_entropy_loss_batchGPU(d_batch_activations.back(), d_batch_targets, sizes.back(), sub_size);
+        }
+        else {
+            throw std::runtime_error("Unsupported loss type");
+        }
+        total_loss += sub_loss;
+
+        // Accumulate correct (keep host-side for argmax; small batch sizes make this efficient)
         for (size_t i = 0; i < sub_size; ++i) {
             if (is_correct_prediction(sub_outputs[i], sub_labels[i])) {
                 ++correct;
             }
+        }
 
-            if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
-                total_loss += gpuCtx_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
-            }
-            else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
-                total_loss += gpuCtx_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
-            }
-            else {
-                throw std::runtime_error("Unsupported loss type");
-            }
+        {
+            // Accumulate correct and loss
+            /*for (size_t i = 0; i < sub_size; ++i) {
+                if (is_correct_prediction(sub_outputs[i], sub_labels[i])) {
+                    ++correct;
+                }
+
+                if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::MSE) {
+                    total_loss += gpuCtx_->compute_mse_lossGPU(sub_outputs[i], sub_targets[i]);
+                }
+                else if (neuron_type_ == NeuronType::SIGMOID && loss_type_ == LossType::CROSS_ENTROPY) {
+                    total_loss += gpuCtx_->compute_cross_entropy_lossGPU(sub_outputs[i], sub_targets[i]);
+                }
+                else {
+                    throw std::runtime_error("Unsupported loss type");
+                }
+            }*/
         }
     }
 

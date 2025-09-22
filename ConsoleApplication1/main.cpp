@@ -75,7 +75,7 @@ int main_888() {
 
 int main() {
     std::cout << "-----------program started----------\n";
-    std::vector<int> sizes = { 784, 300, 100, 10 };
+    std::vector<int> sizes = { 784, 30, 10 };
     std::string train_images = "data/train-images-idx3-ubyte";
     std::string train_labels = "data/train-labels-idx1-ubyte";
     std::string test_images = "data/t10k-images-idx3-ubyte";
@@ -90,7 +90,7 @@ int main() {
     Network_b net(sizes, l2strength, loss, neuron);
 
     int epochs = 10;
-    int mini_batch_size = 128;
+    int mini_batch_size = 64;
     double eta = 1.5;
 
     // Display network parameters
@@ -106,7 +106,7 @@ int main() {
     return 0;
 }
 
-int main66() {
+int main_44() {
 
     // Default parameters
     NeuralNetworkTest tester;

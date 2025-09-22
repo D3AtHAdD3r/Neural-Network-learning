@@ -503,3 +503,55 @@ void GPUPass::debugPrint_batch(const double* d_data, int rows, int cols) {
     }
     cudaDeviceSynchronize();
 }
+
+// Computes sum over batch of ||output_j - target_j||^2 (squared Frobenius norm of (output - target) matrix)
+// output and target are column-major matrices: output_size rows x batch_size cols
+double GPUPass::compute_mse_loss_batchGPU(const double* d_output, const double* d_target, int output_size, int batch_size) {
+    int total_elements = output_size * batch_size;
+    double* d_diff;
+    CHECK_CUDA(cudaMalloc(&d_diff, total_elements * sizeof(double)));
+
+    // d_diff = d_output - d_target
+    CHECK_CUDA(cudaMemcpy(d_diff, d_output, total_elements * sizeof(double), cudaMemcpyDeviceToDevice));
+    double alpha = -1.0;
+    CHECK_CUBLAS(cublasDaxpy(cublasHandle, total_elements, &alpha, d_target, 1, d_diff, 1));
+
+    // Compute Frobenius norm squared (sum of all squared elements)
+    double norm;
+    CHECK_CUBLAS(cublasDnrm2(cublasHandle, total_elements, d_diff, 1, &norm));
+
+    CHECK_CUDA(cudaFree(d_diff));
+    return norm * norm;
+}
+
+// Computes sum over all elements in batch of cross-entropy losses (extends single-example kernel to flat array)
+// output and target are column-major matrices: output_size rows x batch_size cols
+double GPUPass::compute_cross_entropy_loss_batchGPU(const double* d_output, const double* d_target, int output_size, int batch_size) {
+    int total_elements = output_size * batch_size;
+    double* d_loss;
+    CHECK_CUDA(cudaMalloc(&d_loss, total_elements * sizeof(double)));
+
+    // Launch elementwise cross-entropy kernel on entire flat array
+    int threads = 256;
+    int blocks = (total_elements + threads - 1) / threads;
+    cuda_kernels::crossEntropyLossKernel << <blocks, threads >> > (d_output, d_target, d_loss, total_elements);
+    CHECK_CUDA(cudaGetLastError());
+
+    // Sum all losses using reduction (handles large totals efficiently)
+    double* d_sum;
+    CHECK_CUDA(cudaMalloc(&d_sum, blocks * sizeof(double)));
+    cuda_kernels::sumReductionKernel << <blocks, threads, threads * sizeof(double) >> > (d_loss, d_sum, total_elements);
+    CHECK_CUDA(cudaGetLastError());
+
+    // Copy partial sums to host and finalize
+    std::vector<double> partial_sums(blocks);
+    CHECK_CUDA(cudaMemcpy(partial_sums.data(), d_sum, blocks * sizeof(double), cudaMemcpyDeviceToHost));
+    double total_loss = 0.0;
+    for (double sum : partial_sums) {
+        total_loss += sum;
+    }
+
+    CHECK_CUDA(cudaFree(d_loss));
+    CHECK_CUDA(cudaFree(d_sum));
+    return total_loss;
+}
